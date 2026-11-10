@@ -1,5 +1,8 @@
 #include "backend.h"
 
+#include "keyboard.h"
+#include "keymap.h"
+
 #include <QClipboard>
 #include <QDateTime>
 #include <QCoreApplication>
@@ -55,6 +58,29 @@ Backend::Backend(const QString &configDirectory, bool probe, QObject *parent)
         } else {
             setStatus(result.second.first, result.second.second);
         }
+    });
+
+    connect(&m_keymapWatcher, &QFutureWatcher<QPair<bool, QPair<int, QString>>>::finished, this, [this] {
+        const auto result = m_keymapWatcher.result();
+        m_busy = false;
+        emit busyChanged();
+        if (result.first) {
+            m_savedRemaps = m_remaps;
+            m_savedMacros = m_macros;
+            save();
+            setStatus(Ready, {});
+            emit keymapChanged();
+            emit notice(tr("Keys saved on the keyboard"));
+        } else {
+            setStatus(result.second.first, result.second.second);
+        }
+        // The animation gave the keyboard up for the write; it carries on.
+        if (m_resumeAnimation && Protocol::isAnimated(m_activeMode)) {
+            const Protocol::Effect e = settings(m_activeMode);
+            m_streamer.play(Animation::create(m_activeMode, e.speed, e.color), e.brightness);
+            emit activeChanged();
+        }
+        m_resumeAnimation = false;
     });
 
     // Changes are kept a moment after they stop, so a dragged slider writes
@@ -262,7 +288,6 @@ void Backend::apply() {
     m_streamer.stop();
     if (Protocol::isAnimated(m_mode)) {
         m_activeMode = m_mode;
-        m_previewTimer.stop();
         m_streamer.play(Animation::create(m_mode, effect.speed, effect.color), effect.brightness);
         emit activeChanged();
         emit notice(tr("Animating. It runs while %1 stays open.").arg("GMK67"));
@@ -334,6 +359,7 @@ void Backend::poll() {
 
 void Backend::retranslate() {
     emit modesChanged();
+    emit keyFunctionsChanged();
     emit settingsChanged();
 }
 
@@ -361,6 +387,37 @@ void Backend::load() {
     }
     if (const int active = root.value("mode").toInt(-1); Protocol::findMode(active))
         m_mode = active;
+    const QJsonObject keymap = root.value("keymap").toObject();
+    for (auto it = keymap.begin(); it != keymap.end(); ++it) {
+        bool ok = false;
+        const int index = it.key().toInt(&ok);
+        const int code = it.value().toInt();
+        if (ok && Keymap::remappable(index) && Keymap::find(code))
+            m_savedRemaps.insert(index, code);
+    }
+    for (const auto &value : root.value("macros").toArray()) {
+        const QJsonObject o = value.toObject();
+        Macros::Macro macro;
+        macro.name = o.value("name").toString();
+        macro.delay = std::clamp(o.value("delay").toInt(Macros::MinDelay), Macros::MinDelay, Macros::MaxDelay);
+        for (const auto &stepValue : o.value("steps").toArray()) {
+            const QJsonObject so = stepValue.toObject();
+            Macros::Step step;
+            if (so.value("type").toString() == "text") {
+                step.type = Macros::Step::Text;
+                step.text = so.value("text").toString();
+            } else {
+                step.modifiers = so.value("modifiers").toInt() & 0xF;
+                step.usage = so.value("usage").toInt();
+                if (!Keymap::find(Keymap::code(Keymap::Key, step.usage)))
+                    continue;
+            }
+            macro.steps.append(step);
+        }
+        m_savedMacros.append(macro);
+    }
+    m_macros = m_savedMacros;
+    m_remaps = m_savedRemaps;
     const QJsonArray recent = root.value("recent").toArray();
     if (recent.size() == Presets.size()) {
         QList<QColor> colors;
@@ -385,10 +442,240 @@ void Backend::save() const {
     QJsonArray recent;
     for (const QColor &c : m_recent)
         recent.append(c.name());
+    QJsonObject keymap;
+    for (auto it = m_savedRemaps.begin(); it != m_savedRemaps.end(); ++it)
+        keymap.insert(QString::number(it.key()), it.value());
+    QJsonArray macros;
+    for (const Macros::Macro &macro : m_savedMacros) {
+        QJsonArray steps;
+        for (const Macros::Step &step : macro.steps)
+            steps.append(step.type == Macros::Step::Text
+                             ? QJsonObject{{"type", "text"}, {"text", step.text}}
+                             : QJsonObject{{"type", "combo"}, {"modifiers", step.modifiers}, {"usage", step.usage}});
+        macros.append(QJsonObject{{"name", macro.name}, {"delay", macro.delay}, {"steps", steps}});
+    }
     QDir().mkpath(m_configDirectory);
     QSaveFile file(m_configDirectory + "/profile.json");
     if (!file.open(QIODevice::WriteOnly))
         return;
-    file.write(QJsonDocument(QJsonObject{{"mode", m_mode}, {"effects", effects}, {"recent", recent}}).toJson());
+    file.write(QJsonDocument(QJsonObject{{"mode", m_mode}, {"effects", effects}, {"recent", recent}, {"keymap", keymap}, {"macros", macros}}).toJson());
     file.commit();
+}
+
+QVariantList Backend::keyFunctions() const {
+    QVariantList list;
+    for (const Keymap::Function &f : Keymap::functions())
+        list.append(QVariantMap{{"code", f.code},
+                                {"name", QCoreApplication::translate("Keymap", f.name)},
+                                {"label", QString::fromUtf8(f.label)},
+                                {"group", QCoreApplication::translate("Keymap", f.group)}});
+    for (int slot = 0; slot < m_macros.size(); ++slot) {
+        const int code = Keymap::code(Keymap::Macro, slot);
+        list.append(QVariantMap{{"code", code}, {"name", functionName(code)}, {"label", functionLabel(code)},
+                                {"group", tr("Macros")}});
+    }
+    return list;
+}
+
+QVariantList Backend::remaps() const {
+    QVariantList list;
+    for (const auto &key : Protocol::keys())
+        list.append(m_remaps.value(key.index, 0));
+    return list;
+}
+
+bool Backend::remappable(int key) const {
+    return key >= 0 && key < Protocol::keys().size() && Keymap::remappable(Protocol::keys()[key].index);
+}
+
+void Backend::remapKey(int key, int code) {
+    if (!remappable(key) || !(Keymap::find(code) || (code >> 16 == Keymap::Macro && (code & 0xFFFF) < m_macros.size())))
+        return;
+    m_remaps.insert(Protocol::keys()[key].index, code);
+    emit keymapChanged();
+}
+
+void Backend::resetKey(int key) {
+    if (key >= 0 && key < Protocol::keys().size() && m_remaps.remove(Protocol::keys()[key].index))
+        emit keymapChanged();
+}
+
+void Backend::resetAllKeys() {
+    if (m_remaps.isEmpty())
+        return;
+    m_remaps.clear();
+    emit keymapChanged();
+}
+
+void Backend::discardKeymap() {
+    m_remaps = m_savedRemaps;
+    m_macros = m_savedMacros;
+    emit keymapChanged();
+    emit macrosChanged();
+    emit keyFunctionsChanged();
+}
+
+void Backend::saveKeymap() {
+    if (m_busy)
+        return;
+    if (m_macros != m_savedMacros && Macros::area(m_macros).isEmpty()) {
+        emit notice(tr("The macros don't fit in the keyboard's memory."));
+        return;
+    }
+    // Only one program may talk to the keyboard at a time, or packets mix:
+    // a playing animation pauses for the write.
+    m_resumeAnimation = animating();
+    m_streamer.stop();
+    m_busy = true;
+    emit busyChanged();
+    const QByteArray table = Keymap::table(m_remaps);
+    // Macros are written only when they changed: the area is small and
+    // their write is the less tried one.
+    const QByteArray area = m_macros != m_savedMacros ? Macros::area(m_macros) : QByteArray();
+    m_keymapWatcher.setFuture(QtConcurrent::run([table, area] {
+        Keyboard keyboard;
+        const bool ok = (area.isEmpty() || keyboard.writeMacros(area)) && keyboard.writeKeymap(table);
+        return qMakePair(ok, qMakePair(int(keyboard.status()), keyboard.errorString()));
+    }));
+}
+
+QString Backend::functionLabel(int code) const {
+    if (code >> 16 == Keymap::Macro)
+        return QString("M%1").arg((code & 0xFFFF) + 1);
+    const Keymap::Function *f = Keymap::find(code);
+    return f ? QString::fromUtf8(f->label) : QString();
+}
+
+QString Backend::functionName(int code) const {
+    if (code >> 16 == Keymap::Macro) {
+        const int slot = code & 0xFFFF;
+        const QString name = slot < m_macros.size() ? m_macros[slot].name : QString();
+        return name.isEmpty() ? tr("Macro %1").arg(slot + 1) : QString("%1. %2").arg(slot + 1).arg(name);
+    }
+    const Keymap::Function *f = Keymap::find(code);
+    return f ? QCoreApplication::translate("Keymap", f->name) : QString();
+}
+
+void Backend::macrosEdited() {
+    emit macrosChanged();
+    emit keymapChanged();
+    emit keyFunctionsChanged();
+}
+
+QVariantList Backend::macros() const {
+    QVariantList list;
+    for (int slot = 0; slot < m_macros.size(); ++slot) {
+        const Macros::Macro &m = m_macros[slot];
+        QVariantList steps;
+        for (int i = 0; i < m.steps.size(); ++i)
+            steps.append(stepText(slot, i));
+        list.append(QVariantMap{{"name", m.name},
+                                {"title", functionName(Keymap::code(Keymap::Macro, slot))},
+                                {"delay", m.delay},
+                                {"steps", steps},
+                                {"size", int(Macros::body(m).size())}});
+    }
+    return list;
+}
+
+int Backend::addMacro() {
+    Macros::Macro macro;
+    macro.name = tr("Macro %1").arg(m_macros.size() + 1);
+    m_macros.append(macro);
+    macrosEdited();
+    return int(m_macros.size()) - 1;
+}
+
+// Later macros move up a slot, so keys given them follow, and keys given
+// this one go back to their own function.
+void Backend::removeMacro(int slot) {
+    if (slot < 0 || slot >= m_macros.size())
+        return;
+    m_macros.removeAt(slot);
+    for (auto it = m_remaps.begin(); it != m_remaps.end();) {
+        if (it.value() >> 16 == Keymap::Macro) {
+            const int s = it.value() & 0xFFFF;
+            if (s == slot) {
+                it = m_remaps.erase(it);
+                continue;
+            }
+            if (s > slot)
+                it.value() = Keymap::code(Keymap::Macro, s - 1);
+        }
+        ++it;
+    }
+    macrosEdited();
+}
+
+void Backend::renameMacro(int slot, const QString &name) {
+    if (slot < 0 || slot >= m_macros.size() || m_macros[slot].name == name.trimmed())
+        return;
+    m_macros[slot].name = name.trimmed();
+    macrosEdited();
+}
+
+void Backend::setMacroDelay(int slot, int ms) {
+    ms = std::clamp(ms, Macros::MinDelay, Macros::MaxDelay);
+    if (slot < 0 || slot >= m_macros.size() || m_macros[slot].delay == ms)
+        return;
+    m_macros[slot].delay = ms;
+    macrosEdited();
+}
+
+void Backend::addComboStep(int slot, int modifiers, int usage) {
+    if (slot < 0 || slot >= m_macros.size() || !Keymap::find(Keymap::code(Keymap::Key, usage)))
+        return;
+    Macros::Step step;
+    step.modifiers = modifiers & 0xF;
+    step.usage = usage;
+    m_macros[slot].steps.append(step);
+    macrosEdited();
+}
+
+bool Backend::addTextStep(int slot, const QString &text) {
+    if (slot < 0 || slot >= m_macros.size() || text.isEmpty() || !Macros::typeable(text))
+        return false;
+    Macros::Step step;
+    step.type = Macros::Step::Text;
+    step.text = text;
+    m_macros[slot].steps.append(step);
+    macrosEdited();
+    return true;
+}
+
+void Backend::removeStep(int slot, int step) {
+    if (slot < 0 || slot >= m_macros.size() || step < 0 || step >= m_macros[slot].steps.size())
+        return;
+    m_macros[slot].steps.removeAt(step);
+    macrosEdited();
+}
+
+void Backend::moveStep(int slot, int step, int delta) {
+    if (slot < 0 || slot >= m_macros.size())
+        return;
+    auto &steps = m_macros[slot].steps;
+    const int to = step + delta;
+    if (step < 0 || step >= steps.size() || to < 0 || to >= steps.size())
+        return;
+    steps.move(step, to);
+    macrosEdited();
+}
+
+QString Backend::stepText(int slot, int step) const {
+    if (slot < 0 || slot >= m_macros.size() || step < 0 || step >= m_macros[slot].steps.size())
+        return {};
+    const Macros::Step &s = m_macros[slot].steps[step];
+    if (s.type == Macros::Step::Text)
+        return tr("Type “%1”").arg(QString(s.text).replace('\n', "⏎"));
+    QStringList parts;
+    if (s.modifiers & Macros::Ctrl)
+        parts << "Ctrl";
+    if (s.modifiers & Macros::Shift)
+        parts << "Shift";
+    if (s.modifiers & Macros::Alt)
+        parts << "Alt";
+    if (s.modifiers & Macros::Super)
+        parts << "Super";
+    parts << functionName(Keymap::code(Keymap::Key, s.usage));
+    return parts.join(" + ");
 }

@@ -9,6 +9,8 @@
 #include "animations.h"
 #include "backend.h"
 #include "keyboard.h"
+#include "keymap.h"
+#include "macros.h"
 #include "protocol.h"
 #include "theme.h"
 #include "translator.h"
@@ -177,6 +179,116 @@ private slots:
         QCOMPARE(again.settings(0x07).color, QColor("#123456"));
         QCOMPARE(again.settings(0x07).speed, 3);
         QCOMPARE(again.settings(0x0B).brightness, 5);
+    }
+
+    // bitten-security's layout: four bytes per key at its light index * 4,
+    // [2, 0, usage, 0] or [3, lo, hi, 0], AA 55 at the end, zeros elsewhere.
+    void keymapTableMatchesTheVerifiedLayout() {
+        const QByteArray empty = Keymap::table({});
+        QCOMPARE(empty.size(), 576);
+        QCOMPARE(empty.left(574), QByteArray(574, '\0'));
+        QCOMPARE(empty.right(2), QByteArray::fromHex("aa55"));
+
+        const int f5 = Keymap::code(Keymap::Key, 0x3E), volumeUp = Keymap::code(Keymap::Media, 0xE9);
+        const int calculator = Keymap::code(Keymap::Media, 0x192);
+        const QByteArray t = Keymap::table({{1, f5}, {20, volumeUp}, {21, calculator}, {Keymap::FnLightIndex, f5}});
+        QCOMPARE(t.mid(4, 4), QByteArray::fromHex("02003e00"));
+        QCOMPARE(t.mid(80, 4), QByteArray::fromHex("03e90000"));
+        QCOMPARE(t.mid(84, 4), QByteArray::fromHex("03920100"));
+        // Fn is never remapped, or its layer would be out of reach.
+        QCOMPARE(t.mid(Keymap::FnLightIndex * 4, 4), QByteArray(4, '\0'));
+        // An unknown code is left out rather than sent.
+        QCOMPARE(Keymap::table({{1, 0x20099}}).mid(4, 4), QByteArray(4, '\0'));
+    }
+
+    void everyKeymapFunctionIsUnique() {
+        QSet<int> codes;
+        for (const auto &f : Keymap::functions()) {
+            QVERIFY2(!codes.contains(f.code), f.name);
+            codes.insert(f.code);
+            QVERIFY(Keymap::entry(f.code).size() == 4);
+        }
+        QVERIFY(Keymap::find(Keymap::code(Keymap::Key, 0x35)));  // grave, for Super+`
+    }
+
+    // Edits stay pending until saved; only what was written goes in the profile.
+    void remapsArePendingUntilSaved() {
+        QTemporaryDir dir;
+        const int esc = 0;  // keys()[0] is Esc
+        const int f5 = Keymap::code(Keymap::Key, 0x3E);
+        {
+            Backend backend(dir.path(), false);
+            QVERIFY(!backend.keymapDirty());
+            backend.remapKey(esc, f5);
+            QVERIFY(backend.keymapDirty());
+            QCOMPARE(backend.remaps().at(esc).toInt(), f5);
+            backend.discardKeymap();
+            QVERIFY(!backend.keymapDirty());
+            QCOMPARE(backend.remaps().at(esc).toInt(), 0);
+            // Fn can't be picked.
+            for (int i = 0; i < Protocol::keys().size(); ++i)
+                if (Protocol::keys()[i].index == Keymap::FnLightIndex)
+                    QVERIFY(!backend.remappable(i));
+        }
+        write(dir.filePath("profile.json"), R"({"keymap": {"1": 131134, "96": 131134, "2": 7}})");
+        Backend loaded(dir.path(), false);
+        QCOMPARE(loaded.remaps().at(esc).toInt(), f5);  // Esc is light index 1
+        QVERIFY(!loaded.keymapDirty());
+        QCOMPARE(loaded.remaps().count(QVariant(0)), Protocol::keys().size() - 1);
+        loaded.resetAllKeys();
+        QVERIFY(loaded.keymapDirty());
+    }
+
+    // Ctrl + C: four events with the pause between each, as bitten-security
+    // builds them: [usage, B0 / 30] and [lo, hi, 0, 50, 0, 0].
+    void comboMacroMatchesTheVerifiedLayout() {
+        Macros::Macro macro;
+        macro.steps.append({Macros::Step::Combo, Macros::Ctrl, 0x06, {}});
+        macro.delay = 10;
+        const QByteArray body = Macros::body(macro);
+        QCOMPARE(body.toHex(), QByteArray("07000000000000000000"
+                                          "e0b0" "0a0000500000" "06b0" "0a0000500000"
+                                          "0630" "0a0000500000" "e030"));
+        const QByteArray area = Macros::area({macro, macro});
+        QCOMPARE(area.size(), 576);
+        QCOMPARE(quint8(area[0]) | quint8(area[1]) << 8, 400);
+        QCOMPARE(quint8(area[2]) | quint8(area[3]) << 8, 400 + body.size());
+        QCOMPARE(area.mid(400, body.size()), body);
+        QCOMPARE(area.right(2), QByteArray::fromHex("aa55"));
+    }
+
+    void textMacroTypesWithShift() {
+        Macros::Macro macro;
+        macro.steps.append({Macros::Step::Text, 0, 0, "aB"});
+        const auto events = Macros::events(macro);
+        QCOMPARE(events.size(), 6);  // a down/up, Shift down, b down/up, Shift up
+        QCOMPARE(events[2].usage, 0xE1);
+        QCOMPARE(events[3].usage, 0x05);
+        QVERIFY(Macros::typeable("Hello, world!"));
+        QVERIFY(!Macros::typeable("ção"));
+    }
+
+    void macrosThatDontFitAreRefused() {
+        Macros::Macro macro;
+        macro.steps.append({Macros::Step::Text, 0, 0, "abcdefghijklmnop"});  // 32 events, 63 items
+        QVERIFY(Macros::used({macro}) > Macros::Space);
+        QVERIFY(Macros::area({macro}).isEmpty());
+    }
+
+    // Deleting a macro frees keys given it and moves later ones up a slot.
+    void removingAMacroFollowsTheKeys() {
+        QTemporaryDir dir;
+        Backend backend(dir.path(), false);
+        QCOMPARE(backend.addMacro(), 0);
+        QCOMPARE(backend.addMacro(), 1);
+        backend.remapKey(0, Keymap::code(Keymap::Macro, 0));
+        backend.remapKey(1, Keymap::code(Keymap::Macro, 1));
+        backend.remapKey(2, Keymap::code(Keymap::Macro, 5));  // no such macro
+        QCOMPARE(backend.remaps().at(2).toInt(), 0);
+        backend.removeMacro(0);
+        QCOMPARE(backend.remaps().at(0).toInt(), 0);
+        QCOMPARE(backend.remaps().at(1).toInt(), Keymap::code(Keymap::Macro, 0));
+        QCOMPARE(Keymap::table({{2, Keymap::code(Keymap::Macro, 1)}}).mid(8, 4), QByteArray::fromHex("06000100"));
     }
 
     void directionsFollowTheEffect() {

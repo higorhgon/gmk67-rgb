@@ -36,6 +36,11 @@ public:
     // saved: the keyboard returns to its stored effect a few seconds after
     // frames stop.
     bool sendLive(const QList<QColor> &colors);
+    // Replaces the base layer's remap table (Keymap::table) and clears the
+    // Fn layer's, so Fn keeps its stock functions. Saved on the keyboard.
+    bool writeKeymap(const QByteArray &table);
+    // Replaces every macro with Macros::area. Saved on the keyboard.
+    bool writeMacros(const QByteArray &area);
 
     Status status() const { return m_status; }
     QString errorString() const { return m_error; }
@@ -44,6 +49,7 @@ private:
     bool send(const QByteArray &data, bool pause);
     bool read(QByteArray *reply, bool pause);
     bool command(int cmd, int pages = 0);
+    bool exchange(const QByteArray &packet);
     bool fail(Status status, const QString &message);
 
     int m_fd = -1;

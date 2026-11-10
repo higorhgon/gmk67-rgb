@@ -11,6 +11,8 @@ HEADERS += \
     src/backend.h \
     src/cli.h \
     src/keyboard.h \
+    src/keymap.h \
+    src/macros.h \
     src/protocol.h \
     src/streamer.h \
     src/theme.h \
@@ -22,6 +24,8 @@ SOURCES += \
     src/backend.cpp \
     src/cli.cpp \
     src/keyboard.cpp \
+    src/keymap.cpp \
+    src/macros.cpp \
     src/protocol.cpp \
     src/streamer.cpp \
     src/theme.cpp \

@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QVariantList>
 
+#include "macros.h"
 #include "protocol.h"
 #include "streamer.h"
 
@@ -34,6 +35,13 @@ class Backend : public QObject {
     Q_PROPERTY(bool animating READ animating NOTIFY activeChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QVariantList preview READ preview NOTIFY previewChanged)
+    Q_PROPERTY(QVariantList keyFunctions READ keyFunctions NOTIFY keyFunctionsChanged)
+    Q_PROPERTY(QVariantList macros READ macros NOTIFY macrosChanged)
+    Q_PROPERTY(int macroSpace READ macroSpace CONSTANT)
+    Q_PROPERTY(int macroUsed READ macroUsed NOTIFY macrosChanged)
+    // Per Protocol::keys() entry: the function code it's given, 0 for its own.
+    Q_PROPERTY(QVariantList remaps READ remaps NOTIFY keymapChanged)
+    Q_PROPERTY(bool keymapDirty READ keymapDirty NOTIFY keymapChanged)
 
 public:
     // Mirrors Keyboard::Status for QML.
@@ -70,6 +78,37 @@ public:
     bool animating() const { return m_streamer.isRunning(); }
     bool busy() const { return m_busy; }
     QVariantList preview() const;
+    QVariantList keyFunctions() const;
+    QVariantList remaps() const;
+    bool keymapDirty() const { return m_remaps != m_savedRemaps || m_macros != m_savedMacros; }
+    QVariantList macros() const;
+    int macroSpace() const { return Macros::Space; }
+    int macroUsed() const { return Macros::used(m_macros); }
+
+    // Macro editing, by slot. Like remaps, kept here until saveKeymap().
+    Q_INVOKABLE int addMacro();
+    Q_INVOKABLE void removeMacro(int slot);
+    Q_INVOKABLE void renameMacro(int slot, const QString &name);
+    Q_INVOKABLE void setMacroDelay(int slot, int ms);
+    Q_INVOKABLE void addComboStep(int slot, int modifiers, int usage);
+    Q_INVOKABLE bool addTextStep(int slot, const QString &text);
+    Q_INVOKABLE void removeStep(int slot, int step);
+    Q_INVOKABLE void moveStep(int slot, int step, int delta);
+    Q_INVOKABLE bool typeable(const QString &text) const { return Macros::typeable(text); }
+    // What a step does, as "Ctrl + Shift + T" or "Type “hello”".
+    Q_INVOKABLE QString stepText(int slot, int step) const;
+
+    // Remapping, by Protocol::keys() index. Changes stay here until
+    // saveKeymap() writes them to the keyboard.
+    Q_INVOKABLE bool remappable(int key) const;
+    Q_INVOKABLE void remapKey(int key, int code);
+    Q_INVOKABLE void resetKey(int key);
+    Q_INVOKABLE void resetAllKeys();
+    Q_INVOKABLE void discardKeymap();
+    Q_INVOKABLE void saveKeymap();
+    // The short label and the full name of a function code.
+    Q_INVOKABLE QString functionLabel(int code) const;
+    Q_INVOKABLE QString functionName(int code) const;
 
     // Sends the picked effect: saved on the keyboard for its own effects,
     // played from here for the animated ones.
@@ -91,6 +130,9 @@ signals:
     void activeChanged();
     void busyChanged();
     void previewChanged();
+    void keymapChanged();
+    void keyFunctionsChanged();
+    void macrosChanged();
     // A short outcome for a toast.
     void notice(const QString &message);
 
@@ -124,4 +166,11 @@ private:
     std::unique_ptr<Animation> m_previewAnimation;
     qint64 m_previewStart = 0, m_previewLast = 0;
     QFutureWatcher<QPair<bool, QPair<int, QString>>> m_applyWatcher;
+    QFutureWatcher<QPair<bool, QPair<int, QString>>> m_keymapWatcher;
+    // Light index → function code: as edited, and as last written. The
+    // keyboard can't be asked for its table, so the profile remembers it.
+    QHash<int, int> m_remaps, m_savedRemaps;
+    QList<Macros::Macro> m_macros, m_savedMacros;
+    void macrosEdited();
+    bool m_resumeAnimation = false;
 };

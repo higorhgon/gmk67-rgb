@@ -4,6 +4,9 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QFile>
+#include <QSaveFile>
+#include <QStandardPaths>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,6 +18,7 @@
 
 #include "animations.h"
 #include "keyboard.h"
+#include "keymap.h"
 #include "protocol.h"
 #include "streamer.h"
 
@@ -113,6 +117,32 @@ int animate(const Protocol::Mode &mode, const Protocol::Effect &effect, int fps)
     return code;
 }
 
+// Gives every key its own function back, on both layers, and forgets the
+// remaps in the profile so the window agrees. Works with only a mouse and a
+// terminal, for when a remap left the keyboard hard to type on.
+int resetKeys(bool json) {
+    Keyboard keyboard;
+    if (!keyboard.writeKeymap(Keymap::table({})))
+        return fail(keyboard.errorString());
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/gmk67/profile.json";
+    QFile file(path);
+    if (file.open(QIODevice::ReadOnly)) {
+        QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+        root.remove("keymap");
+        QSaveFile save(path);
+        if (save.open(QIODevice::WriteOnly)) {
+            save.write(QJsonDocument(root).toJson());
+            save.commit();
+        }
+    }
+    if (json)
+        out() << QJsonDocument(QJsonObject{{"keys", "reset"}}).toJson(QJsonDocument::Compact) << Qt::endl;
+    else
+        out() << "every key is back to its own function" << Qt::endl;
+    return 0;
+}
+
 }  // namespace
 
 bool Cli::wantsWindow(const QStringList &args) {
@@ -127,10 +157,11 @@ int Cli::run(const QStringList &args) {
                                      "  list                 every effect, animated ones marked\n"
                                      "  status               the keyboard and its current effect\n"
                                      "  set <effect>         save a keyboard effect\n"
-                                     "  animate <effect>     play an animated effect until stopped");
+                                     "  animate <effect>     play an animated effect until stopped\n"
+                                     "  keys reset           undo every key remap");
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addPositionalArgument("command", "open, list, status, set, or animate");
+    parser.addPositionalArgument("command", "open, list, status, set, animate, or keys");
     QCommandLineOption json("json", "Machine-readable output.");
     QCommandLineOption color("color", "Color as #rrggbb.", "color");
     QCommandLineOption random("random", "Random colors (keyboard effects that take a color).");
@@ -147,6 +178,11 @@ int Cli::run(const QStringList &args) {
         return list(parser.isSet(json));
     if (command == "status")
         return status(parser.isSet(json));
+    if (command == "keys") {
+        if (positional.value(1) != "reset")
+            return fail("keys takes reset; see gmk67 --help");
+        return resetKeys(parser.isSet(json));
+    }
     if (command != "set" && command != "animate")
         return fail(QString("unknown command \"%1\"; see gmk67 --help").arg(command));
 

@@ -2,6 +2,7 @@
     <qresource prefix="/">
         <file alias="AppButton.qml">AppButton.qml</file>
         <file alias="AppCheckBox.qml">AppCheckBox.qml</file>
+        <file alias="AppComboBox.qml">AppComboBox.qml</file>
         <file alias="AppIcon.qml">AppIcon.qml</file>
         <file alias="AppSegmented.qml">AppSegmented.qml</file>
         <file alias="AppSlider.qml">AppSlider.qml</file>

@@ -33,6 +33,10 @@ Popup {
             ["c", qsTr("Pick a color")],
             ["1 … 8", qsTr("Use a recent color")],
             ["r", qsTr("Random colors on or off")] ] },
+        { title: qsTr("Keys"), keys: [
+            ["Tab", qsTr("Switch between lighting, keys and macros")],
+            ["Delete", qsTr("Restore the picked key")],
+            ["Space / Enter", qsTr("Save to keyboard")] ] },
         { title: qsTr("Window"), keys: [
             ["? / F1", qsTr("Show these shortcuts")],
             ["q", qsTr("Quit")] ] }

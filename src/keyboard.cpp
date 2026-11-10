@@ -1,5 +1,8 @@
 #include "keyboard.h"
 
+#include "keymap.h"
+#include "macros.h"
+
 #include <QDir>
 #include <QFile>
 #include <QThread>
@@ -14,6 +17,7 @@
 namespace {
 constexpr int Header = 0x04;
 constexpr int CmdEnd = 0x02, CmdRead = 0x12, CmdWrite = 0x13, CmdBegin = 0x18, CmdLive = 0x20, CmdApply = 0xF0;
+constexpr int CmdKeymap = 0x11, CmdFnKeymap = 0x27;
 // The vendor driver waits this long between packets of a saved write.
 constexpr unsigned long PacketPauseMs = 15;
 }  // namespace
@@ -163,4 +167,54 @@ bool Keyboard::sendLive(const QList<QColor> &colors) {
         if (!send(frame.mid(page * Protocol::PacketSize, Protocol::PacketSize), false))
             return false;
     return true;
+}
+
+// A packet and its reply, the reply read and ignored, as bitten-security's
+// tool writes the remap tables.
+bool Keyboard::exchange(const QByteArray &packet) {
+    QByteArray padded = packet;
+    padded.resize(Protocol::PacketSize, '\0');
+    return send(padded, true) && read(nullptr, true);
+}
+
+bool Keyboard::writeKeymap(const QByteArray &table) {
+    if (table.size() != Keymap::TableSize)
+        return fail(Failed, tr("The key table has the wrong size."));
+    if (!isOpen() && !open())
+        return false;
+    QByteArray empty(Keymap::TableSize, '\0');
+    empty[Keymap::TableSize - 2] = char(0xAA);
+    empty[Keymap::TableSize - 1] = char(0x55);
+    for (const auto &[cmd, data] : {std::pair{CmdKeymap, table}, std::pair{CmdFnKeymap, empty}}) {
+        QByteArray header(9, '\0');
+        header[0] = char(Header);
+        header[1] = char(cmd);
+        header[8] = char(Keymap::Pages);
+        if (!exchange(QByteArray::fromHex("0418")) || !exchange(header))
+            return false;
+        for (int page = 0; page < Keymap::Pages; ++page)
+            if (!exchange(data.mid(page * Protocol::PacketSize, Protocol::PacketSize)))
+                return false;
+        if (!exchange(QByteArray::fromHex("04f0")))
+            return false;
+    }
+    return true;
+}
+
+// Macros go in their own transaction, 04 19 … 04 02, not 04 18 … 04 F0.
+bool Keyboard::writeMacros(const QByteArray &area) {
+    if (area.size() != Macros::AreaSize)
+        return fail(Failed, tr("The macros don't fit in the keyboard's memory."));
+    if (!isOpen() && !open())
+        return false;
+    QByteArray header(9, '\0');
+    header[0] = char(Header);
+    header[1] = char(0x15);
+    header[8] = char(Macros::Pages);
+    if (!exchange(QByteArray::fromHex("0419")) || !exchange(header))
+        return false;
+    for (int page = 0; page < Macros::Pages; ++page)
+        if (!exchange(area.mid(page * Protocol::PacketSize, Protocol::PacketSize)))
+            return false;
+    return exchange(QByteArray::fromHex("0402"));
 }
