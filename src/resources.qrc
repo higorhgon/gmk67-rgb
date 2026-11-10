@@ -1,0 +1,16 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="AppButton.qml">AppButton.qml</file>
+        <file alias="AppCheckBox.qml">AppCheckBox.qml</file>
+        <file alias="AppIcon.qml">AppIcon.qml</file>
+        <file alias="AppSegmented.qml">AppSegmented.qml</file>
+        <file alias="AppSlider.qml">AppSlider.qml</file>
+        <file alias="AppTextField.qml">AppTextField.qml</file>
+        <file alias="ColorPopup.qml">ColorPopup.qml</file>
+        <file alias="IconButton.qml">IconButton.qml</file>
+        <file alias="KeyboardPreview.qml">KeyboardPreview.qml</file>
+        <file alias="Main.qml">Main.qml</file>
+        <file alias="ShortcutsOverlay.qml">ShortcutsOverlay.qml</file>
+        <file alias="i18n/pt-BR.json">i18n/pt-BR.json</file>
+    </qresource>
+</RCC>

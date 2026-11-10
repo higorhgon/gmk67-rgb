@@ -1,80 +1,119 @@
-# gmk67-rgb
+# GMK67
 
-> English fork of [aloran-dev/gmk67-rgb](https://github.com/aloran-dev/gmk67-rgb).
+Lighting for the Zuoya GMK67 keyboard on [Omarchy](https://omarchy.org): the
+keyboard's own 19 effects, plus effects it can't do by itself — flames, plasma,
+a rainbow wave, Matrix rain, and twinkling stars — drawn on the PC and sent to
+the keys live.
 
-The program to change the backlight of the Zuoya GMK67 only exists for Windows, and OpenRGB does not recognize this version of the keyboard, so I decided to vibecode this small app.
+![GMK67 playing Flames](docs/screenshot.png)
 
-The app aims to be simple: you pick an effect and a color, adjust brightness and speed, and that's it. I have only tested it with my own keyboard, so don't expect broad compatibility.
-
-## What it does
-
-- 19 effects plus "Off": static, breathing, wave, flowing, ripples, etc.
-- Color, random colors, brightness, speed and direction.
-- History of the last 8 applied colors.
-- Color correction for the keyboard LEDs: without it, orange looks yellow and bluish greens look blue.
-- On startup, it reads the effect currently set on the keyboard.
+A C++/Qt rewrite of [aloran-dev/gmk67-rgb](https://github.com/aloran-dev/gmk67-rgb),
+in the style of Omarchy's own apps: one window, driven from the keyboard,
+following the theme's colors, rounding and language.
 
 ## Compatibility
 
-Only the **GMK67 v1** connected **by USB cable**. It identifies like this:
+Only the **GMK67 v1** connected **by USB cable**. The 2.4 GHz dongle and
+Bluetooth don't carry the lighting commands. It identifies like this:
 
 ```
 $ lsusb
 ... ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)   ← ID borrowed by the firmware
-$ cat /sys/class/hidraw/hidraw*/device/uevent | grep hfd
+$ grep hfd /sys/class/hidraw/hidraw*/device/uevent
 HID_NAME=hfd.cn USB DEVICE
 ```
 
-The GMK67 **v2** (`36b0:3068`) uses QMK/VIA and does not need this: it works with [VIA](https://usevia.app).
+The GMK67 **v2** (`36b0:3068`) runs QMK/VIA and works with [VIA](https://usevia.app).
 
-## Installation
+## Install
 
-Download the package for your distribution from the upstream [Releases](https://github.com/aloran-dev/gmk67-rgb/releases) (Spanish UI):
-
-| Distribution | Install |
-|---|---|
-| Ubuntu 24.04+, Debian 13+, Mint, Pop!_OS | `sudo apt install ./gmk67-rgb_*_all.deb` |
-| Fedora 39+ | `sudo dnf install ./gmk67-rgb-*.noarch.rpm` |
-| Any with Flatpak | `flatpak install --user gmk67-rgb-*.flatpak` |
-
-The `.deb` and `.rpm` install a udev rule that gives the logged-in user access to the keyboard. A Flatpak cannot install rules on the system, so with Flatpak you have to add it once by hand. The app shows the commands the first time it cannot access the keyboard.
-
-### From source
-
-You need Python 3, PyGObject, GTK 4.12+ and libadwaita 1.4+ (on Ubuntu/Debian: `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1`; on Arch: `python-gobject gtk4 libadwaita`).
+From the [higorhgon arch-repo](https://github.com/higorhgon/arch-repo):
 
 ```sh
-git clone https://github.com/higorhgon/gmk67-rgb.git
-cd gmk67-rgb
-./install.sh            # app in ~/.local + udev rule (asks for sudo)
-./install.sh --uninstall
+sudo pacman -S gmk67-git
+```
+
+The package installs a udev rule that lets the logged-in user use the keyboard;
+unplug and replug the cable once after installing. Then open **GMK67** from the
+launcher (`Super + Space`).
+
+To build it yourself: `bin/build` (needs `qt6-base`, `qt6-declarative`, `qmake6`
+and `make`), `bin/test` runs the tests, and `bin/install` builds and installs the
+package with `makepkg`.
+
+## Keyboard effects and animated effects
+
+- **Keyboard effects** are saved on the keyboard. They keep running after you
+  close the app or unplug the cable.
+- **Animated effects** are drawn by this app, 60 frames a second, and play while
+  it's open. Nothing is written to the keyboard's memory: when they stop, it goes
+  back to its own effect after a few seconds. To keep one playing without the
+  window, use `gmk67 animate` (below).
+
+## Shortcuts
+
+| Key | Action |
+|---|---|
+| `↑` / `↓`, `k` / `j` | Previous or next effect |
+| `Space` / `Enter` | Apply the effect (play, for animated ones) |
+| `Esc` | Stop the animation |
+| `←` / `→` | Less or more brightness |
+| `Shift + ←` / `Shift + →` | Slower or faster |
+| `c` | Pick a color |
+| `1` … `8` | Use a recent color |
+| `r` | Random colors on or off |
+| `?` / `F1` | Show the shortcuts |
+| `q` | Quit |
+
+## Command line
+
+Every command works without a window, for scripts and agents. Errors go to
+stderr and the exit code is 0 or 1.
+
+```sh
+gmk67 list [--json]                       # every effect; animated ones marked
+gmk67 status [--json]                     # the keyboard and its current effect
+gmk67 set wave --color '#ff8000' --speed 12 --direction right-left
+gmk67 set breathing --random --brightness 8
+gmk67 animate flames --speed 10           # plays until Ctrl+C or SIGTERM
+```
+
+`gmk67 animate` can run from Hyprland's autostart to keep an animation going
+all the time:
+
+```lua
+-- ~/.config/hypr/autostart.lua
+o.exec_on_start("gmk67 animate plasma --brightness 10")
 ```
 
 ## Protocol
 
-It was obtained by analyzing the official Windows driver. They are 64-byte HID *feature reports*, with no report ID, on interface 0 of the keyboard. To set an effect, send:
+64-byte HID feature reports with no report ID, on interface 0 of the wired
+keyboard.
 
-| Packet | Meaning |
+| Packets | Meaning |
 |---|---|
-| `04 18` | enable the software effect |
-| `04 13 00 00 00 00 00 00 01` | 1 page is about to be written |
-| `[mode, R, G, B, 0, 0, 0, 0, random, brightness+1, speed+1, direction, 0, 0, AA, 55]` | the effect page |
-| `04 02` | end of write |
-| `04 F0` | apply |
+| `04 18`, `04 13 … [8]=01`, page, `04 02`, `04 F0` | Save an effect. Each command is acknowledged with `04 <cmd> 00 01`. |
+| `[mode, R, G, B, 0, 0, 0, 0, random, brightness+1, speed+1, direction, 0, 0, AA, 55]` | The effect page. Modes `0x01`–`0x13`; `0x00` is off. |
+| `04 12 … [8]=01`, page, `04 02` | Read the saved effect. |
+| `04 02`, `04 20 … [8]=08`, 8 pages | One live frame: `[light index, R, G, B]` for each of the 66 keys, in row order. Not saved. |
 
-Each command is acknowledged by a GET_FEATURE that returns `04 <cmd> 00 01`. Modes go from `0x01` to `0x13` and `0x00` turns the lights off. Brightness and speed go from 0 to 15. Details are in [`gmk67.py`](gmk67.py).
+Live frames skip the firmware's color handling, so green needs much less power
+there: the app corrects colors separately for effect pages and live frames.
+Details are in [`src/protocol.cpp`](src/protocol.cpp) and
+[`src/keyboard.cpp`](src/keyboard.cpp).
 
-It looks like the Keychron K3 V2 protocol supported by OpenRGB, but this keyboard accepts and ignores the OpenRGB sequence (`04 19` + 18 pages).
+Never send `04 11` or `04 27`: they replace the base and Fn keymaps.
 
-Changes made with the Fn keys are not reflected in the effect saved by software.
+## Credits
 
-It can also be used without the UI:
-
-```python
-import gmk67
-with gmk67.Keyboard() as kb:
-    kb.set_effect(gmk67.Effect(0x07, color=(255, 128, 0), speed=12))  # orange breathing
-```
+- [aloran-dev/gmk67-rgb](https://github.com/aloran-dev/gmk67-rgb) (GPL-3.0), the
+  original app and the effect protocol, taken from the official Windows driver.
+- [yasasgit/gmk67-openrgb](https://github.com/yasasgit/gmk67-openrgb)'s
+  `docs/PROTOCOL.md`: the live frame command and the keys' light indices.
+- The theme and translation classes and the build scripts follow Omacut and
+  Monologue, and the look of the controls follows Hype (MIT, David Heinemeier
+  Hansson), by way of [Omajim](https://github.com/higorhgon/omajim).
 
 ## License
 

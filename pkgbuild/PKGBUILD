@@ -1,0 +1,37 @@
+# Maintainer: Higor Henrique Prata Gonçalves <higorlhp2@gmail.com>
+
+pkgname=gmk67-git
+pkgver=2.0.0.r8.g649bedb
+pkgrel=1
+pkgdesc='Luzes do teclado Zuoya GMK67 no Omarchy: efeitos do teclado e animações ao vivo'
+arch=('x86_64' 'aarch64')
+url='https://github.com/higorhgon/gmk67-rgb'
+license=('GPL-3.0-or-later')
+depends=('qt6-base' 'qt6-declarative' 'qt6-wayland')
+makedepends=('gcc' 'make' 'git')
+provides=('gmk67')
+conflicts=('gmk67' 'gmk67-rgb')
+source=()
+sha256sums=()
+
+# Uma versão por commit, para o arch-repo recompilar a cada mudança.
+pkgver() {
+  cd "$startdir/.."
+  printf "2.0.0.r%s.g%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "$startdir/.."
+  ./bin/build
+}
+
+package() {
+  cd "$startdir/.."
+  install -Dm755 build/gmk67 "$pkgdir/usr/bin/gmk67"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$startdir/gmk67.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/gmk67.svg"
+  install -Dm644 "$startdir/gmk67.desktop" "$pkgdir/usr/share/applications/gmk67.desktop"
+  # Gives the logged-in user the keyboard's hidraw node; pacman's udev hook
+  # reloads the rules, and replugging the cable applies them.
+  install -Dm644 "$startdir/70-gmk67.rules" "$pkgdir/usr/lib/udev/rules.d/70-gmk67.rules"
+}

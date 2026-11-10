@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=GMK67
+Comment=Light up the Zuoya GMK67 keyboard
+Comment[pt_BR]=Ilumine o teclado Zuoya GMK67
+Exec=gmk67
+Icon=gmk67
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=keyboard;rgb;led;lighting;teclado;luzes;
+StartupWMClass=gmk67
