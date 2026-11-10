@@ -43,11 +43,26 @@ QString Keyboard::find(const QString &sysRoot, const QString &devRoot) {
     return {};
 }
 
+bool Keyboard::wirelessPresent(const QString &sysRoot) {
+    if (!find(sysRoot).isEmpty())
+        return false;
+    const QDir dir(sysRoot);
+    for (const QString &name : dir.entryList({"hidraw*"}, QDir::Dirs | QDir::System | QDir::NoDotAndDotDot)) {
+        QFile uevent(dir.filePath(name + "/device/uevent"));
+        if (uevent.open(QIODevice::ReadOnly)
+            && QString::fromUtf8(uevent.readAll()).contains(":000005AC:0000024F", Qt::CaseInsensitive))
+            return true;
+    }
+    return false;
+}
+
 bool Keyboard::open(const QString &path) {
     close();
     m_status = Ready;
     m_error.clear();
     const QString device = path.isEmpty() ? find() : path;
+    if (device.isEmpty() && path.isEmpty() && wirelessPresent())
+        return fail(Wireless, tr("Connected wirelessly. Effects, keys and macros saved on the keyboard keep working; plug in the USB cable to change them or to play an animation."));
     if (device.isEmpty())
         return fail(NotFound, tr("Connect the GMK67 with its USB cable. The dongle and Bluetooth can't change the lights."));
     m_fd = ::open(QFile::encodeName(device).constData(), O_RDWR | O_CLOEXEC);

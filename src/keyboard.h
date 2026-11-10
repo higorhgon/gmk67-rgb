@@ -15,7 +15,7 @@ class Keyboard {
     Q_DECLARE_TR_FUNCTIONS(Keyboard)
 
 public:
-    enum Status { Ready, NotFound, NoPermission, Failed };
+    enum Status { Ready, NotFound, NoPermission, Failed, Wireless };
 
     Keyboard() = default;
     ~Keyboard();
@@ -25,6 +25,11 @@ public:
     // The /dev/hidrawN of the GMK67's control interface, or empty. sysRoot
     // and devRoot are only changed by tests.
     static QString find(const QString &sysRoot = "/sys/class/hidraw", const QString &devRoot = "/dev");
+
+    // Whether the GMK67 is there without its control interface: through the
+    // 2.4 GHz dongle (same IDs) or Bluetooth. What's saved on it still works,
+    // but nothing can be changed or animated that way.
+    static bool wirelessPresent(const QString &sysRoot = "/sys/class/hidraw");
 
     bool open(const QString &path = {});
     void close();

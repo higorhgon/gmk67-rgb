@@ -120,6 +120,16 @@ private slots:
         QTemporaryDir none;
         addHidraw(none.path(), "hidraw0", "HID_ID=0003:000005AC:0000024F\n", QByteArray::fromHex("05010906a101c0"));
         QVERIFY(Keyboard::find(none.path(), "/dev").isEmpty());
+        // The same IDs without the control interface: the dongle, or
+        // Bluetooth (bus 0005).
+        QVERIFY(Keyboard::wirelessPresent(none.path()));
+        QVERIFY(!Keyboard::wirelessPresent(dir.path()));
+        QTemporaryDir bluetooth;
+        addHidraw(bluetooth.path(), "hidraw1", "HID_ID=0005:000005AC:0000024F\n", QByteArray::fromHex("05010906a101c0"));
+        QVERIFY(Keyboard::wirelessPresent(bluetooth.path()));
+        QTemporaryDir other;
+        addHidraw(other.path(), "hidraw0", "HID_ID=0003:00001234:00005678\n", control);
+        QVERIFY(!Keyboard::wirelessPresent(other.path()));
     }
 
     void everyAnimationFillsEveryKey() {

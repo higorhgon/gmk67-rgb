@@ -40,6 +40,7 @@ ApplicationWindow {
         case 0: return backend.animating ? qsTr("Connected, animating") : qsTr("Connected by USB")
         case 1: return qsTr("Not connected")
         case 2: return qsTr("No permission")
+        case 4: return qsTr("Wireless")
         default: return qsTr("Not responding")
         }
     }
@@ -131,7 +132,8 @@ ApplicationWindow {
                             spacing: 7
                             Rectangle {
                                 implicitWidth: 8; implicitHeight: 8; radius: 4
-                                color: backend.status === 0 ? win.ui.green : backend.status === 1 ? win.ui.muted : win.ui.error
+                                color: backend.status === 0 ? win.ui.green : backend.status === 4 ? win.ui.accent
+                                     : backend.status === 1 ? win.ui.muted : win.ui.error
                             }
                             Label { text: win.statusText(); font.pixelSize: 12; color: win.ui.muted }
                         }
@@ -170,7 +172,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 visible: backend.status !== 0
                 implicitHeight: problem.implicitHeight + 24
-                color: Qt.tint(win.ui.panel, Qt.alpha(backend.status === 1 ? win.ui.accent : win.ui.error, 0.10))
+                color: Qt.tint(win.ui.panel, Qt.alpha(backend.status === 1 || backend.status === 4 ? win.ui.accent : win.ui.error, 0.10))
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: win.ui.border }
 
                 ColumnLayout {
@@ -184,7 +186,7 @@ ApplicationWindow {
                         spacing: 10
                         AppIcon {
                             name: backend.status === 2 ? "lock" : "plug"
-                            color: backend.status === 1 ? win.ui.accent : win.ui.error
+                            color: backend.status === 1 || backend.status === 4 ? win.ui.accent : win.ui.error
                             Layout.preferredWidth: 18; Layout.preferredHeight: 18
                         }
                         Label {

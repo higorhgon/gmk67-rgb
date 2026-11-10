@@ -25,6 +25,7 @@
   "Click a key, then pick what it should do": "Clique numa tecla e escolha o que ela deve fazer",
   "Color": "Cor",
   "Commands copied": "Comandos copiados",
+  "Connected wirelessly. Effects, keys and macros saved on the keyboard keep working; plug in the USB cable to change them or to play an animation.": "Conectado sem fio. Os efeitos, teclas e macros salvos no teclado continuam valendo; ligue o cabo USB para mudá-los ou tocar uma animação.",
   "Connected, animating": "Conectado, animando",
   "Connected by USB": "Conectado por USB",
   "Connect the GMK67 with its USB cable. The dongle and Bluetooth can't change the lights.": "Conecte o GMK67 pelo cabo USB. O dongle e o Bluetooth não mudam as luzes.",
@@ -150,5 +151,6 @@
   "Rainbow wave": "Onda arco-íris",
   "Plasma": "Plasma",
   "Matrix rain": "Chuva Matrix",
-  "Twinkle": "Estrelas"
+  "Twinkle": "Estrelas",
+  "Wireless": "Sem fio"
 }

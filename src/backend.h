@@ -45,7 +45,7 @@ class Backend : public QObject {
 
 public:
     // Mirrors Keyboard::Status for QML.
-    enum Status { Ready, NotFound, NoPermission, Failed };
+    enum Status { Ready, NotFound, NoPermission, Failed, Wireless };
     Q_ENUM(Status)
 
     // configDirectory holds profile.json; tests pass a temporary one, and
