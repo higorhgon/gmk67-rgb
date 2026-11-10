@@ -58,12 +58,14 @@ ComboBox {
         height: Math.min(contentItem.implicitHeight + 6, 320)
         padding: 3
         contentItem: ListView {
+            id: options
             clip: true
             implicitHeight: contentHeight
             model: box.popup.visible ? box.delegateModel : null
             currentIndex: box.highlightedIndex
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            SmoothWheel { view: options }
         }
         background: Rectangle {
             color: box.ui.panel

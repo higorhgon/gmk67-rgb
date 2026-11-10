@@ -134,7 +134,8 @@ stock function. The app always writes both, the Fn one empty.
   there on the keyboard.
 - The theme and translation classes and the build scripts follow Omacut and
   Monologue, and the look of the controls follows Hype (MIT, David Heinemeier
-  Hansson), by way of [Omajim](https://github.com/higorhgon/omajim).
+  Hansson), by way of [Omajim](https://github.com/higorhgon/omajim), whose
+  `SmoothWheel.qml` also scrolls the lists here.
 
 ## License
 

@@ -278,6 +278,7 @@ ApplicationWindow {
                     topMargin: 8
                     bottomMargin: 8
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    SmoothWheel { view: effects }
                     section.property: "animated"
                     section.delegate: Label {
                         required property string section
@@ -343,6 +344,7 @@ ApplicationWindow {
                     contentHeight: settings.implicitHeight + 40
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    SmoothWheel { view: settingsView }
 
                     ColumnLayout {
                         id: settings
@@ -478,6 +480,7 @@ ApplicationWindow {
                     topMargin: 8
                     bottomMargin: 8
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    SmoothWheel { view: functionsView }
                     section.property: "group"
                     section.delegate: Label {
                         required property string section
@@ -525,6 +528,7 @@ ApplicationWindow {
                     contentHeight: keyPanel.implicitHeight + 40
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    SmoothWheel { view: keyView }
 
                     ColumnLayout {
                         id: keyPanel
@@ -614,6 +618,7 @@ ApplicationWindow {
                         boundsBehavior: Flickable.StopAtBounds
                         topMargin: 8
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        SmoothWheel { view: macroList }
                         delegate: Item {
                             id: macroRow
                             required property var modelData
@@ -661,6 +666,7 @@ ApplicationWindow {
                     contentHeight: macroPanel.implicitHeight + 40
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    SmoothWheel { view: macroView }
 
                     ColumnLayout {
                         id: macroPanel

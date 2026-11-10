@@ -11,6 +11,7 @@
         <file alias="IconButton.qml">IconButton.qml</file>
         <file alias="KeyboardPreview.qml">KeyboardPreview.qml</file>
         <file alias="Main.qml">Main.qml</file>
+        <file alias="SmoothWheel.qml">SmoothWheel.qml</file>
         <file alias="ShortcutsOverlay.qml">ShortcutsOverlay.qml</file>
         <file alias="i18n/pt-BR.json">i18n/pt-BR.json</file>
     </qresource>
