@@ -15,6 +15,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk
 
+import fx
 import gmk67
 from colorpicker import ColorPickerButton
 
@@ -27,6 +28,13 @@ UDEV_COMMAND = (
 )
 PRESETS = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (0, 255, 0),
            (0, 255, 255), (0, 0, 255), (128, 0, 255), (255, 255, 255)]
+# Software effects get ids above the firmware ones (0x00-0x13) so they can share
+# the profile; they are listed after the firmware effects, before "Off".
+SOFTWARE_BASE = 0x100
+ALL_MODES = (gmk67.MODES[:-1]
+             + [(SOFTWARE_BASE + i, f"{cls.name} (animated)", cls.uses_color, True, gmk67.DIR_NONE)
+                for i, cls in enumerate(fx.EFFECTS)]
+             + gmk67.MODES[-1:])
 CONFIG_DIR = os.path.join(GLib.get_user_config_dir(), "gmk67-rgb")
 CONFIG = os.path.join(CONFIG_DIR, "profile.json")
 COLORS = os.path.join(CONFIG_DIR, "colors.json")
@@ -82,8 +90,12 @@ class Window(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="GMK67", default_width=460, default_height=640)
         self.profile = load_profile()
+        for mode in ALL_MODES:
+            self.profile.effects.setdefault(mode[0], gmk67.Effect(mode[0]))
         self.recent = load_recent()
         self.loading = False
+        self.streamer = None
+        self.connect("close-request", lambda _w: self.stop_animation() or False)
 
         self.toasts = Adw.ToastOverlay()
         view = Adw.ToolbarView()
@@ -100,7 +112,7 @@ class Window(Adw.ApplicationWindow):
 
         # Effect
         group = Adw.PreferencesGroup(title="Effect")
-        self.mode_row = Adw.ComboRow(title="Mode", model=Gtk.StringList.new([m[1] for m in gmk67.MODES]))
+        self.mode_row = Adw.ComboRow(title="Mode", model=Gtk.StringList.new([m[1] for m in ALL_MODES]))
         self.mode_row.connect("notify::selected", self.on_mode_changed)
         group.add(self.mode_row)
         page.add(group)
@@ -143,7 +155,7 @@ class Window(Adw.ApplicationWindow):
         self.toasts.set_child(view)
         self.set_content(self.toasts)
 
-        active_index = next((i for i, m in enumerate(gmk67.MODES) if m[0] == self.profile.active), 0)
+        active_index = next((i for i, m in enumerate(ALL_MODES) if m[0] == self.profile.active), 0)
         self.mode_row.set_selected(active_index)
         self.on_mode_changed()
 
@@ -193,15 +205,18 @@ class Window(Adw.ApplicationWindow):
     # --- state ---
 
     def current_mode(self):
-        return gmk67.MODES[self.mode_row.get_selected()]
+        return ALL_MODES[self.mode_row.get_selected()]
 
     def on_mode_changed(self, *_):
         value, _name, has_color, has_speed, dir_kind = self.current_mode()
         effect = self.profile.effects[value]
+        animated = value >= SOFTWARE_BASE
         self.loading = True
 
+        self.mode_row.set_subtitle("Animated by this app: runs while it stays open" if animated else "")
         self.color_group.set_visible(has_color)
         self.color_btn.set_color(effect.color)
+        self.random_row.set_visible(not animated)
         self.random_row.set_active(effect.random)
 
         self.brightness.set_value(effect.brightness)
@@ -231,12 +246,38 @@ class Window(Adw.ApplicationWindow):
         effect.direction = directions[self.dir_row.get_selected()][0] if directions else 0
         self.profile.active = value
 
+    def stop_animation(self):
+        if self.streamer:
+            self.streamer.stop()
+            self.streamer = None
+
+    def start_animation(self, effect):
+        cls = fx.EFFECTS[effect.value - SOFTWARE_BASE]
+        anim = cls(speed=effect.speed, color=effect.color)
+
+        def on_error(e):
+            if isinstance(e, PermissionError):
+                GLib.idle_add(self.show_udev_help)
+            else:
+                GLib.idle_add(self.done, f"Animation paused: {e}")
+
+        self.streamer = fx.Streamer(anim, effect.brightness, on_error=on_error).start()
+
     def on_apply(self, _btn):
-        self.apply_btn.set_sensitive(False)
         save_profile(self.profile)
         effect = self.profile.effects[self.profile.active]
         if self.current_mode()[2] and not effect.random:
             self.remember_color(effect.color)
+
+        # Stop any running animation first: it holds the keyboard open and would
+        # otherwise overwrite the firmware effect a moment later.
+        self.stop_animation()
+        if effect.value >= SOFTWARE_BASE:
+            self.start_animation(effect)
+            self.done("Animating — keep the app open")
+            return
+
+        self.apply_btn.set_sensitive(False)
 
         def worker():
             try:

@@ -38,6 +38,7 @@ udevadm trigger --subsystem-match=hidraw >/dev/null 2>&1 || :
 %license LICENSE
 %doc README.md
 %{_bindir}/gmk67-rgb
+%{_bindir}/gmk67-fx
 %{_datadir}/gmk67-rgb/
 %{_datadir}/applications/io.github.aloran_dev.Gmk67Rgb.desktop
 %{_datadir}/metainfo/io.github.aloran_dev.Gmk67Rgb.metainfo.xml

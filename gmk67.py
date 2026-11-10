@@ -31,13 +31,42 @@ CMD_COMM_END = 0x02
 CMD_READ_EFFECT = 0x12
 CMD_WRITE_EFFECT = 0x13
 CMD_SOFTWARE_EFFECT = 0x18
+CMD_LIVE_FRAME = 0x20
 CMD_EFFECT_START = 0xF0
+
+LIVE_PAGES = 8   # a live frame is 8 pages = 512 bytes, only the first 66 * 4 are used
+LIVE_MAX = 0xFE  # the vendor app never sends 0xff in a live frame
+
+
+def _row(indices, xs, y):
+    return [(i, x, y) for i, x in zip(indices, xs)]
+
+
+# Every lit key as (light_index, x, y), in the packed order of a live frame
+# (row by row, left to right). x/y are the key centers in key units on the 65%
+# layout; light_index values come from the vendor KeyboardLayout.xml.
+KEYS = (
+    _row([1, *range(20, 32), 103],
+         [0.5, *(1.5 + i for i in range(12)), 14.0], 0)
+    + _row([37, *range(38, 50), 67, 119],
+           [0.75, *(2.0 + i for i in range(12)), 14.25, 15.5], 1)
+    + _row([55, *range(56, 67), 85, 118],
+           [0.875, *(2.25 + i for i in range(11)), 13.875, 15.5], 2)
+    + _row([73, *range(74, 84), 84, 101, 121],
+           [1.125, *(2.75 + i for i in range(10)), 13.125, 14.5, 15.5], 3)
+    + _row([91, 92, 93, 94, 95, 96, 99, 100, 102],
+           [0.625, 1.875, 3.125, 6.875, 10.5, 11.5, 13.5, 14.5, 15.5], 4)
+)
+WIDTH, HEIGHT = 16.0, 5.0  # layout size in key units
 
 # The LEDs are not linear like a screen: without gamma, orange ff8000 looks
 # yellow, and blue dominates so much that mint 1deeb2 looks blue. Corrected on
 # send and undone on read. Values tuned by eye on the keyboard.
 GAMMA = 2.2
 GAIN = (0.97, 1.0, 0.33)  # R, G, B after gamma
+# Live frames (04 20) bypass the firmware's own color handling and green is far
+# stronger there: orange ff8000 only looks orange with a raw green of about 14.
+LIVE_GAIN = (1.0, 0.26, 0.33)
 
 MAX_LEVEL = 0x0F  # brightness and speed go from 0 to 15; on the page they are +1
 
@@ -75,9 +104,9 @@ DIRECTIONS = {
 }
 
 
-def to_led(color):
+def to_led(color, gain=GAIN):
     linear = [(c / 255) ** GAMMA for c in color]
-    balanced = [v * k for v, k in zip(linear, GAIN)]
+    balanced = [v * k for v, k in zip(linear, gain)]
     # Rescale so the strongest channel keeps its intensity (pure blue does not go dark)
     scale = max(linear) / max(balanced) if max(balanced) else 0
     return tuple(round(255 * v * scale) for v in balanced)
@@ -197,6 +226,34 @@ class Keyboard:
         self.send(effect.page())
         self.command(CMD_COMM_END)
         self.command(CMD_EFFECT_START)
+
+    def send_live(self, colors, correct=True):
+        """Show one temporary frame: colors is a list of (R, G, B), one per KEYS entry.
+
+        Nothing is saved: if frames stop, the keyboard goes back to its stored
+        effect after a few seconds, so animations must keep sending.
+        """
+        frame = bytearray(PACKET_LEN * LIVE_PAGES)
+        for n, ((index, _x, _y), color) in enumerate(zip(KEYS, colors)):
+            r, g, b = to_led(color, LIVE_GAIN) if correct else color
+            frame[n * 4:n * 4 + 4] = bytes((index, min(r, LIVE_MAX), min(g, LIVE_MAX), min(b, LIVE_MAX)))
+        self.send_fast(bytes((HEADER, CMD_COMM_END)))
+        self.read_fast()
+        self.send_fast(bytes((HEADER, CMD_LIVE_FRAME, 0, 0, 0, 0, 0, 0, LIVE_PAGES)))
+        self.read_fast()
+        for page in range(LIVE_PAGES):
+            self.send_fast(frame[page * PACKET_LEN:(page + 1) * PACKET_LEN])
+
+    def send_fast(self, data):
+        """Like send() but without the fixed delay, for live frames."""
+        buf = bytearray(PACKET_LEN + 1)
+        buf[1:1 + len(data)] = data
+        fcntl.ioctl(self.fd, HIDIOCSFEATURE(len(buf)), buf)
+
+    def read_fast(self):
+        buf = bytearray(PACKET_LEN + 1)
+        fcntl.ioctl(self.fd, HIDIOCGFEATURE(len(buf)), buf, True)
+        return bytes(buf[1:])
 
     def read_effect(self):
         """Effect saved by software (does not reflect changes made with Fn)."""

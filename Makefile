@@ -12,8 +12,10 @@ install:
 	install -Dm644 gmk67.py       $(DATADIR)/gmk67-rgb/gmk67.py
 	install -Dm644 colorpicker.py $(DATADIR)/gmk67-rgb/colorpicker.py
 	install -Dm755 gmk67-rgb      $(DATADIR)/gmk67-rgb/gmk67-rgb
+	install -Dm755 fx.py          $(DATADIR)/gmk67-rgb/fx.py
 	install -d $(DESTDIR)$(PREFIX)/bin
 	ln -sf ../share/gmk67-rgb/gmk67-rgb $(DESTDIR)$(PREFIX)/bin/gmk67-rgb
+	ln -sf ../share/gmk67-rgb/fx.py $(DESTDIR)$(PREFIX)/bin/gmk67-fx
 	install -Dm644 data/$(APP_ID).desktop      $(DATADIR)/applications/$(APP_ID).desktop
 	install -Dm644 data/$(APP_ID).metainfo.xml $(DATADIR)/metainfo/$(APP_ID).metainfo.xml
 	install -Dm644 data/$(APP_ID).svg          $(DATADIR)/icons/hicolor/scalable/apps/$(APP_ID).svg
@@ -23,7 +25,7 @@ endif
 
 uninstall:
 	rm -rf $(DATADIR)/gmk67-rgb
-	rm -f $(DESTDIR)$(PREFIX)/bin/gmk67-rgb \
+	rm -f $(DESTDIR)$(PREFIX)/bin/gmk67-rgb $(DESTDIR)$(PREFIX)/bin/gmk67-fx \
 	      $(DATADIR)/applications/$(APP_ID).desktop \
 	      $(DATADIR)/metainfo/$(APP_ID).metainfo.xml \
 	      $(DATADIR)/icons/hicolor/scalable/apps/$(APP_ID).svg
