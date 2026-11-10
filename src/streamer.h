@@ -25,9 +25,6 @@ public:
     void stop();
 
 signals:
-    // A frame, as shown (brightness applied), for the on-screen preview;
-    // sent at most 30 times a second.
-    void frame(const QList<QColor> &colors);
     // The keyboard became reachable or not; message says why not.
     void reachable(bool ok, int status, const QString &message);
 

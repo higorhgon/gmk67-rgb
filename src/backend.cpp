@@ -39,10 +39,6 @@ Backend::Backend(const QString &configDirectory, bool probe, QObject *parent)
     }
     load();
 
-    connect(&m_streamer, &Streamer::frame, this, [this](const QList<QColor> &colors) {
-        m_preview = colors;
-        emit previewChanged();
-    });
     connect(&m_streamer, &Streamer::reachable, this, [this](bool ok, int status, const QString &message) {
         setStatus(ok ? Ready : status, message);
     });
@@ -215,14 +211,10 @@ QVariantList Backend::preview() const {
     return list;
 }
 
-// What a firmware effect roughly looks like, since only animated effects
-// have frames to show: its color, or a rainbow for the multicolor ones.
+// The preview always shows the selected effect, not the one on the keyboard:
+// animated ones play their own copy, and a firmware effect shows roughly what
+// it looks like, its color or a rainbow for the multicolor ones.
 void Backend::updateStaticPreview() {
-    // While it plays on the keyboard, the streamer's frames are the preview.
-    if (Protocol::isAnimated(m_mode) && animating() && m_activeMode == m_mode) {
-        m_previewTimer.stop();
-        return;
-    }
     if (Protocol::isAnimated(m_mode)) {
         const Protocol::Effect &e = current();
         m_previewAnimation = Animation::create(m_mode, e.speed, e.color);

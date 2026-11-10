@@ -25,7 +25,7 @@ void Streamer::run() {
     bool reported = false, wasReachable = false;
     QElapsedTimer clock;
     clock.start();
-    qint64 last = clock.nsecsElapsed(), lastPreview = 0;
+    qint64 last = clock.nsecsElapsed();
 
     while (!isInterruptionRequested()) {
         const qint64 now = clock.nsecsElapsed();
@@ -44,10 +44,6 @@ void Streamer::run() {
                 emit reachable(false, keyboard.status(), keyboard.errorString());
             reported = true;
             wasReachable = false;
-        }
-        if (now - lastPreview >= 33000000LL) {
-            emit frame(colors);
-            lastPreview = now;
         }
 
         const qint64 wait = wasReachable ? period - (clock.nsecsElapsed() - now) : 1000000000LL;

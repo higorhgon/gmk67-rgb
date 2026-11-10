@@ -2,7 +2,7 @@
 
 #include "protocol.h"
 
-#include <QHash>
+#include <array>
 #include <algorithm>
 #include <cmath>
 
@@ -20,61 +20,59 @@ QColor hue(double h) {
     return QColor::fromHsvF(float(h), 1, 1).toRgb();
 }
 
-// Classic fire: fuel along hidden rows under the space bar, heat that rises
-// and cools, and a cooling map that scrolls up so the tongues flicker.
+// Smooth noise in -1..1 over a plane: random values on a grid, blended
+// with a smoothstep, so it never jumps however it is sampled.
+class Noise {
+public:
+    explicit Noise(QRandomGenerator &random) {
+        for (double &v : m_values)
+            v = random.generateDouble() * 2 - 1;
+    }
+
+    double at(double x, double y) const {
+        const double fx = std::floor(x), fy = std::floor(y);
+        const int ix = int(fx), iy = int(fy);
+        const double u = smooth(x - fx), v = smooth(y - fy);
+        const double top = value(ix, iy) + (value(ix + 1, iy) - value(ix, iy)) * u;
+        const double bottom = value(ix, iy + 1) + (value(ix + 1, iy + 1) - value(ix, iy + 1)) * u;
+        return top + (bottom - top) * v;
+    }
+
+private:
+    static double smooth(double t) { return t * t * (3 - 2 * t); }
+    double value(int x, int y) const { return m_values[size_t((x * 73856093) ^ (y * 19349663)) % m_values.size()]; }
+
+    std::array<double, 256> m_values;
+};
+
+// Tongues of fire: each spot along the keyboard burns to a height that rises
+// and falls smoothly, hottest at the bottom row and fading to dark red at the
+// tip. A real fire simulation turned to noise on only five rows.
 class Flames : public Animation {
 public:
-    using Animation::Animation;
+    Flames(int speed, const QColor &color, quint32 seed) : Animation(speed, color, seed), m_noise(m_random) {}
 
-    QList<QColor> frame(double, double dt) override {
-        if (m_heat.isEmpty()) {
-            m_heat = QList<double>(W * H, 0.0);
-            for (int i = 0; i < W * H; ++i)
-                m_cooling.append(uniform(0, 0.06));
-        }
-        m_steps += dt * 22 * rate();
-        const int steps = std::min(int(m_steps), 6);
-        m_steps -= steps;
-        for (int i = 0; i < steps; ++i)
-            step();
-
+    QList<QColor> frame(double t, double) override {
+        t *= rate() * 1.8;
         QList<QColor> out;
-        const int visible = H - Fuel;
         for (const auto &key : Protocol::keys()) {
-            const int gx = std::min(int(key.x / Protocol::LayoutWidth * W), W - 1);
-            // The top row maps near the top of the fire, the space bar row
-            // just above the fuel.
-            const int gy = int(std::lround(2 + key.y / (Protocol::LayoutHeight - 1) * (visible - 3)));
-            out.append(palette(m_heat[gy * W + gx]));
+            // Rows above the bottom one, to the middle of the key.
+            const double row = Protocol::LayoutHeight - 1 - key.y + 0.5;
+            const double height = 3.6 + 1.4 * m_noise.at(key.x * 0.45, t * 0.9)
+                                + 0.6 * m_noise.at(key.x * 1.1 + 40, t * 1.5);
+            double heat = 1 - row / std::max(height, 0.5);
+            // A slow shimmer; a fast one made the dim tips blink.
+            heat += 0.06 * m_noise.at(key.x * 1.7 + 90, key.y * 1.3 + t * 1.2);
+            out.append(palette(std::clamp(heat * 1.15, 0.0, 1.0)));
         }
         return out;
     }
 
 private:
-    static constexpr int W = 34, H = 14, Fuel = 3;
-
-    double &heat(int x, int y) { return m_heat[y * W + x]; }
-
-    void step() {
-        for (int y = H - Fuel; y < H; ++y)
-            for (int x = 0; x < W; ++x)
-                heat(x, y) = m_random.generateDouble() < 0.35 ? uniform(0.75, 1.0) : heat(x, y) * 0.8;
-        m_shift = (m_shift + 1) % H;
-        for (int y = H - Fuel - 1; y >= 0; --y) {
-            const int coolRow = (y + m_shift) % H;
-            for (int x = 0; x < W; ++x) {
-                const double v = (heat(std::max(x - 1, 0), y + 1) + heat(x, y + 1)
-                                  + heat(std::min(x + 1, W - 1), y + 1) + heat(x, std::min(y + 2, H - 1))) / 4;
-                heat(x, y) = std::max(v - 0.045 - m_cooling[coolRow * W + x], 0.0);
-            }
-        }
-    }
-
     static QColor palette(double v) {
         static const QList<QPair<double, QColor>> stops = {
-            {0.0, QColor(0, 0, 0)},     {0.18, QColor(60, 0, 0)},    {0.38, QColor(200, 20, 0)},
-            {0.6, QColor(255, 90, 0)},  {0.8, QColor(255, 170, 10)}, {1.0, QColor(255, 240, 140)}};
-        v = std::clamp(v, 0.0, 1.0);
+            {0.0, QColor(0, 0, 0)},     {0.15, QColor(70, 0, 0)},    {0.38, QColor(200, 20, 0)},
+            {0.62, QColor(255, 80, 0)}, {0.85, QColor(255, 160, 10)}, {1.0, QColor(255, 220, 90)}};
         for (int i = 1; i < stops.size(); ++i)
             if (v <= stops[i].first)
                 return lerp(stops[i - 1].second, stops[i].second,
@@ -82,9 +80,7 @@ private:
         return stops.last().second;
     }
 
-    QList<double> m_heat, m_cooling;
-    double m_steps = 0;
-    int m_shift = 0;
+    Noise m_noise;
 };
 
 class RainbowWave : public Animation {
@@ -116,37 +112,44 @@ public:
     }
 };
 
-// Drops falling down each column, leaving a fading trail.
+// Drops falling down the keyboard, each at its own spot across it. A drop
+// lights whichever key lies under it on each row, since the rows are
+// staggered, and every key fades out on its own so the trail is smooth.
 class MatrixRain : public Animation {
 public:
     using Animation::Animation;
 
     QList<QColor> frame(double, double dt) override {
-        for (int col = 0; col <= int(Protocol::LayoutWidth); ++col) {
-            if (m_drops.contains(col)) {
-                m_drops[col] += dt * 3.0 * rate();
-                if (m_drops[col] > Protocol::LayoutHeight + 3)
-                    m_drops.remove(col);
-            } else if (m_random.generateDouble() < dt * 0.6 * rate()) {
-                m_drops.insert(col, -0.5);
-            }
-        }
-        const QColor head = lerp(m_color, Qt::white, 0.6);
+        const auto &keys = Protocol::keys();
+        if (m_level.isEmpty())
+            m_level = QList<double>(keys.size(), 0.0);
+
+        if (m_random.generateDouble() < dt * 7.0 * rate())
+            m_drops.append({uniform(0, Protocol::LayoutWidth), -0.5, uniform(0.8, 1.3)});
+        for (Drop &drop : m_drops)
+            drop.y += dt * 3.0 * rate() * drop.speed;
+        m_drops.removeIf([](const Drop &d) { return d.y > Protocol::LayoutHeight + 0.5; });
+
+        const double fade = std::exp(-dt * 2.2 * rate() / 0.5);
         QList<QColor> out;
-        for (const auto &key : Protocol::keys()) {
-            const auto drop = m_drops.constFind(int(key.x));
-            if (drop == m_drops.constEnd() || key.y > *drop + 0.5)
-                out.append(Qt::black);
-            else if (*drop - key.y < 0.6)
-                out.append(head);
-            else
-                out.append(lerp(m_color, Qt::black, (*drop - key.y) / 3.5));
+        for (int i = 0; i < keys.size(); ++i) {
+            const auto &key = keys[i];
+            double head = 0;
+            for (const Drop &drop : m_drops)
+                if (std::abs(drop.x - key.x) <= key.width / 2 && std::abs(drop.y - key.y) < 1)
+                    head = std::max(head, 1 - std::abs(drop.y - key.y));
+            m_level[i] = std::max(m_level[i] * fade, head);
+            out.append(lerp(Qt::black, m_color, m_level[i]));
         }
         return out;
     }
 
 private:
-    QHash<int, double> m_drops;  // column → head position in rows
+    struct Drop {
+        double x, y, speed;
+    };
+    QList<Drop> m_drops;
+    QList<double> m_level;
 };
 
 // Keys fade in and out at random, like stars.
