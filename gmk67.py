@@ -1,15 +1,15 @@
-"""Protocolo RGB del Zuoya GMK67 (v1, firmware hfd.cn HFD801KJC, 05ac:024f).
+"""RGB protocol of the Zuoya GMK67 (v1, hfd.cn HFD801KJC firmware, 05ac:024f).
 
-Sacado del driver oficial (DeviceDriver.exe, FUN_0041db20): feature reports
-de 64 bytes sin report ID en la interfaz 0. Para poner un efecto manda:
+Taken from the official driver (DeviceDriver.exe, FUN_0041db20): 64-byte
+feature reports with no report ID on interface 0. To set an effect, send:
 
-    04 18                       activar el efecto por software
-    04 13 .. .. .. .. .. .. 01  se va a escribir 1 página
-    [página del efecto]
-    04 02                       fin de la escritura
-    04 F0                       aplicar
+    04 18                       enable the software effect
+    04 13 .. .. .. .. .. .. 01  1 page is about to be written
+    [effect page]
+    04 02                       end of write
+    04 F0                       apply
 
-Cada comando se confirma con un GET_FEATURE que devuelve "04 <cmd> 00 01".
+Each command is acknowledged by a GET_FEATURE that returns "04 <cmd> 00 01".
 """
 
 import fcntl
@@ -19,13 +19,13 @@ import time
 from dataclasses import dataclass, field
 
 VID, PID = 0x05AC, 0x024F
-# Debe coincidir con 70-gmk67.rules; la app lo muestra si no hay permiso sobre el hidraw
+# Must match 70-gmk67.rules; the app shows it when there is no permission on the hidraw
 UDEV_RULE = ('SUBSYSTEM=="hidraw", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="024f", '
              'ATTRS{manufacturer}=="hfd.cn", TAG+="uaccess"')
 PACKET_LEN = 64
 HEADER = 0x04
 CHECK_L, CHECK_H = 0xAA, 0x55
-DELAY = 0.015  # el driver espera 15 ms entre paquetes
+DELAY = 0.015  # the driver waits 15 ms between packets
 
 CMD_COMM_END = 0x02
 CMD_READ_EFFECT = 0x12
@@ -33,52 +33,52 @@ CMD_WRITE_EFFECT = 0x13
 CMD_SOFTWARE_EFFECT = 0x18
 CMD_EFFECT_START = 0xF0
 
-# Los LEDs no son lineales como una pantalla: sin gamma el naranja ff8000 se ve
-# amarillo, y el azul domina tanto que el menta 1deeb2 se ve azul. Se corrige al
-# enviar y se deshace al leer. Valores ajustados a ojo sobre el teclado.
+# The LEDs are not linear like a screen: without gamma, orange ff8000 looks
+# yellow, and blue dominates so much that mint 1deeb2 looks blue. Corrected on
+# send and undone on read. Values tuned by eye on the keyboard.
 GAMMA = 2.2
-GAIN = (0.97, 1.0, 0.33)  # R, G, B después de la gamma
+GAIN = (0.97, 1.0, 0.33)  # R, G, B after gamma
 
-MAX_LEVEL = 0x0F  # brillo y velocidad van de 0 a 15; en la página van +1
+MAX_LEVEL = 0x0F  # brightness and speed go from 0 to 15; on the page they are +1
 
 DIR_NONE, DIR_LR, DIR_UD = 0, 1, 2
 
-# (valor, nombre, admite color, admite velocidad, tipo de dirección)
-# Valores de la tabla de modos del driver (1033.lan, ids 200-219).
+# (value, name, supports color, supports speed, direction kind)
+# Values from the driver's mode table (1033.lan, ids 200-219).
 MODES = [
-    (0x01, "Estático", True, False, DIR_NONE),
-    (0x02, "Encender al pulsar", True, True, DIR_NONE),
-    (0x03, "Apagar al pulsar", True, True, DIR_NONE),
-    (0x04, "Destellos", True, True, DIR_NONE),
-    (0x05, "Lluvia", True, True, DIR_NONE),
-    (0x06, "Colores aleatorios", False, True, DIR_NONE),
-    (0x07, "Respiración", True, True, DIR_NONE),
-    (0x08, "Ciclo de espectro", False, True, DIR_NONE),
-    (0x09, "Hacia fuera", True, True, DIR_NONE),
-    (0x0A, "Desplazamiento", True, True, DIR_UD),
-    (0x0B, "Ola", True, True, DIR_LR),
-    (0x0C, "Giro", True, True, DIR_NONE),
-    (0x0D, "Explosión", True, True, DIR_NONE),
-    (0x0E, "Lanzamiento", True, True, DIR_NONE),
-    (0x0F, "Ondas", True, True, DIR_NONE),
-    (0x10, "Flujo", True, True, DIR_LR),
-    (0x11, "Pulsos", True, True, DIR_NONE),
-    (0x12, "Inclinado", True, True, DIR_NONE),
-    (0x13, "Lanzadera", True, True, DIR_LR),
-    (0x00, "Apagado", False, False, DIR_NONE),
+    (0x01, "Static", True, False, DIR_NONE),
+    (0x02, "Light on press", True, True, DIR_NONE),
+    (0x03, "Light off on press", True, True, DIR_NONE),
+    (0x04, "Glittering", True, True, DIR_NONE),
+    (0x05, "Raindrops", True, True, DIR_NONE),
+    (0x06, "Random colors", False, True, DIR_NONE),
+    (0x07, "Breathing", True, True, DIR_NONE),
+    (0x08, "Spectrum cycle", False, True, DIR_NONE),
+    (0x09, "Outward", True, True, DIR_NONE),
+    (0x0A, "Scrolling", True, True, DIR_UD),
+    (0x0B, "Wave", True, True, DIR_LR),
+    (0x0C, "Rotating", True, True, DIR_NONE),
+    (0x0D, "Explode", True, True, DIR_NONE),
+    (0x0E, "Launch", True, True, DIR_NONE),
+    (0x0F, "Ripples", True, True, DIR_NONE),
+    (0x10, "Flowing", True, True, DIR_LR),
+    (0x11, "Pulsating", True, True, DIR_NONE),
+    (0x12, "Tilt", True, True, DIR_NONE),
+    (0x13, "Shuttle", True, True, DIR_LR),
+    (0x00, "Off", False, False, DIR_NONE),
 ]
 
-# Direcciones en bruto: 0 izq→der, 1 der→izq, 2 abajo→arriba, 3 arriba→abajo
+# Raw directions: 0 left→right, 1 right→left, 2 bottom→top, 3 top→bottom
 DIRECTIONS = {
-    DIR_LR: [(0, "Izquierda → derecha"), (1, "Derecha → izquierda")],
-    DIR_UD: [(2, "Abajo → arriba"), (3, "Arriba → abajo")],
+    DIR_LR: [(0, "Left → right"), (1, "Right → left")],
+    DIR_UD: [(2, "Bottom → top"), (3, "Top → bottom")],
 }
 
 
 def to_led(color):
     linear = [(c / 255) ** GAMMA for c in color]
     balanced = [v * k for v, k in zip(linear, GAIN)]
-    # Reescala para que el canal más fuerte conserve su intensidad (el azul puro no se apaga)
+    # Rescale so the strongest channel keeps its intensity (pure blue does not go dark)
     scale = max(linear) / max(balanced) if max(balanced) else 0
     return tuple(round(255 * v * scale) for v in balanced)
 
@@ -125,7 +125,7 @@ class Effect:
 
 @dataclass
 class Profile:
-    """Ajustes de cada efecto, para recordarlos al cambiar de modo en la app."""
+    """Settings for each effect, remembered when switching modes in the app."""
     effects: dict = field(default_factory=lambda: {m[0]: Effect(m[0]) for m in MODES})
     active: int = 0x01
 
@@ -139,7 +139,7 @@ class ProtocolError(Exception):
 
 
 def find_hidraw():
-    """Devuelve /dev/hidrawN de la interfaz 0 del GMK67."""
+    """Return /dev/hidrawN for interface 0 of the GMK67."""
     for sysdir in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
         try:
             with open(os.path.join(sysdir, "device/uevent")) as f:
@@ -150,11 +150,11 @@ def find_hidraw():
             continue
         if uevent.get("HID_ID", "").upper() != f"0003:{VID:08X}:{PID:08X}":
             continue
-        # La interfaz de control tiene un feature report de 64 bytes (95 40 75 08 b1 02)
-        # y es la del teclado (05 01 09 06); un teclado Apple real no lo tiene.
+        # The control interface has a 64-byte feature report (95 40 75 08 b1 02)
+        # and is the keyboard one (05 01 09 06); a real Apple keyboard does not have it.
         if desc.startswith(b"\x05\x01\x09\x06") and b"\x95\x40\x75\x08\xb1\x02" in desc:
             return "/dev/" + os.path.basename(sysdir)
-    raise DeviceNotFound("No se encontró el GMK67 conectado por cable USB")
+    raise DeviceNotFound("No GMK67 connected by USB cable was found")
 
 
 class Keyboard:
@@ -189,7 +189,7 @@ class Keyboard:
         self.send(pkt)
         reply = self.read()
         if reply[:2] != bytes([HEADER, cmd]) or reply[3] != 0x01:
-            raise ProtocolError(f"El teclado no confirmó el comando {cmd:02x}: {reply[:9].hex(' ')}")
+            raise ProtocolError(f"The keyboard did not acknowledge command {cmd:02x}: {reply[:9].hex(' ')}")
 
     def set_effect(self, effect: Effect):
         self.command(CMD_SOFTWARE_EFFECT)
@@ -199,11 +199,11 @@ class Keyboard:
         self.command(CMD_EFFECT_START)
 
     def read_effect(self):
-        """Efecto guardado por software (no refleja los cambios hechos con Fn)."""
+        """Effect saved by software (does not reflect changes made with Fn)."""
         pkt = bytearray(PACKET_LEN)
         pkt[0], pkt[1], pkt[8] = HEADER, CMD_READ_EFFECT, 1
         self.send(pkt)
-        # Normalmente responde con la página directamente, pero a veces antes llega la confirmación
+        # It usually replies with the page directly, but sometimes the ack arrives first
         page = self.read()
         if page[:4] == bytes([HEADER, CMD_READ_EFFECT, 0, 1]):
             page = self.read()

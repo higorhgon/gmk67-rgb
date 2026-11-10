@@ -1,6 +1,6 @@
 #!/bin/sh
-# Instalación desde el código fuente para el usuario actual: la app en ~/.local
-# y la regla udev en el sistema (pide sudo). Para desinstalar: ./install.sh --uninstall
+# Install from source for the current user: the app in ~/.local
+# and the udev rule on the system (asks for sudo). To uninstall: ./install.sh --uninstall
 set -e
 cd "$(dirname "$(realpath "$0")")"
 
@@ -15,6 +15,6 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger --subsystem-match=hidraw
 
 make install PREFIX="$HOME/.local" UDEVDIR=
-# Lanzador de versiones anteriores (antes del cambio de ID de la app)
+# Launcher from older versions (before the app ID change)
 rm -f ~/.local/share/applications/dev.aloran.Gmk67Rgb.desktop
-echo "Listo. Abre «GMK67» desde el menú o ejecuta gmk67-rgb"
+echo "Done. Open \"GMK67\" from the menu or run gmk67-rgb"

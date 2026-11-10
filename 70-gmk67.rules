@@ -1,2 +1,2 @@
-# Zuoya GMK67 (hfd.cn, se identifica como 05ac:024f): acceso al hidraw para el usuario de la sesión
+# Zuoya GMK67 (hfd.cn, identifies as 05ac:024f): hidraw access for the logged-in user
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="024f", ATTRS{manufacturer}=="hfd.cn", TAG+="uaccess"

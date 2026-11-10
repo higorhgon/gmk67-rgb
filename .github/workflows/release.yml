@@ -1,5 +1,5 @@
-# Construye .deb, .rpm y Flatpak. Al empujar una etiqueta vX.Y.Z publica una
-# release con los tres paquetes; lanzado a mano solo deja los artefactos.
+# Build .deb, .rpm and Flatpak. Pushing a vX.Y.Z tag publishes a release
+# with the three packages; a manual run only leaves the artifacts.
 name: release
 
 on:
@@ -18,14 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: v
-        name: Comprobar que la versión coincide en todos los archivos
+        name: Check that the version matches in every file
         run: |
           v=$(sed -n 's/^VERSION = //p' Makefile)
           grep -q "^Version: *$v$" packaging/rpm/gmk67-rgb.spec
           grep -q "<release version=\"$v\"" data/io.github.aloran_dev.Gmk67Rgb.metainfo.xml
           grep -q "^VERSION = \"$v\"" gmk67-rgb
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$v" ]; then
-            echo "La etiqueta $GITHUB_REF_NAME no coincide con la versión $v"; exit 1
+            echo "Tag $GITHUB_REF_NAME does not match version $v"; exit 1
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
@@ -86,24 +86,24 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Crear la release
+      - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -la dist
           gh release create "$GITHUB_REF_NAME" dist/* \
               --repo "$GITHUB_REPOSITORY" --title "GMK67 $GITHUB_REF_NAME" --notes-file - <<'EOF'
-          ## Descargas
+          ## Downloads
 
-          | Distribución | Archivo | Instalar |
+          | Distribution | File | Install |
           |---|---|---|
           | Ubuntu 24.04+, Debian 13+, Mint, Pop!_OS | `.deb` | `sudo apt install ./gmk67-rgb_*_all.deb` |
           | Fedora 39+ | `.rpm` | `sudo dnf install ./gmk67-rgb-*.noarch.rpm` |
-          | Cualquiera con Flatpak | `.flatpak` | `flatpak install --user gmk67-rgb-*.flatpak` |
+          | Any with Flatpak | `.flatpak` | `flatpak install --user gmk67-rgb-*.flatpak` |
 
-          El `.deb` y el `.rpm` instalan la regla udev que da acceso al teclado.
-          **Con Flatpak** hay que instalarla una vez a mano; la app muestra los comandos
-          la primera vez que no puede acceder al teclado.
+          The `.deb` and `.rpm` install the udev rule that grants access to the keyboard.
+          **With Flatpak** you have to install it once by hand; the app shows the commands
+          the first time it cannot access the keyboard.
 
-          Solo para el Zuoya GMK67 **v1** (`05ac:024f`, "hfd.cn USB DEVICE") conectado por cable USB.
+          Only for the Zuoya GMK67 **v1** (`05ac:024f`, "hfd.cn USB DEVICE") connected by USB cable.
           EOF

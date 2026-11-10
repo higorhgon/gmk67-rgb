@@ -3,7 +3,7 @@ VERSION = 1.0.0
 
 PREFIX  ?= /usr/local
 DESTDIR ?=
-# Vacío para no instalar la regla (Flatpak, instalación de usuario)
+# Empty to skip installing the rule (Flatpak, user install)
 UDEVDIR ?= $(PREFIX)/lib/udev/rules.d
 
 DATADIR = $(DESTDIR)$(PREFIX)/share

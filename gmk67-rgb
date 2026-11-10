@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Luces del GMK67: interfaz GTK4 + libadwaita."""
+"""GMK67 lighting: GTK4 + libadwaita interface."""
 
 import json
 import math
@@ -42,7 +42,7 @@ def load_profile():
             profile.effects[int(value)] = gmk67.Effect(**{**e, "color": tuple(e["color"])})
     except (OSError, ValueError, KeyError, TypeError):
         pass
-    # El efecto que tiene ahora el teclado manda sobre lo guardado
+    # The effect currently on the keyboard takes precedence over the saved one
     try:
         with gmk67.Keyboard() as kb:
             effect = kb.read_effect()
@@ -88,19 +88,19 @@ class Window(Adw.ApplicationWindow):
         self.toasts = Adw.ToastOverlay()
         view = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        self.apply_btn = Gtk.Button(label="Aplicar", css_classes=["suggested-action"])
+        self.apply_btn = Gtk.Button(label="Apply", css_classes=["suggested-action"])
         self.apply_btn.connect("clicked", self.on_apply)
         header.pack_end(self.apply_btn)
         menu = Gio.Menu()
-        menu.append("Acerca de GMK67", "app.about")
+        menu.append("About GMK67", "app.about")
         header.pack_start(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu))
         view.add_top_bar(header)
 
         page = Adw.PreferencesPage()
 
-        # Efecto
-        group = Adw.PreferencesGroup(title="Efecto")
-        self.mode_row = Adw.ComboRow(title="Modo", model=Gtk.StringList.new([m[1] for m in gmk67.MODES]))
+        # Effect
+        group = Adw.PreferencesGroup(title="Effect")
+        self.mode_row = Adw.ComboRow(title="Mode", model=Gtk.StringList.new([m[1] for m in gmk67.MODES]))
         self.mode_row.connect("notify::selected", self.on_mode_changed)
         group.add(self.mode_row)
         page.add(group)
@@ -123,18 +123,18 @@ class Window(Adw.ApplicationWindow):
         preset_row = Adw.PreferencesRow(activatable=False, child=presets)
         self.color_group.add(preset_row)
 
-        self.random_row = Adw.SwitchRow(title="Colores aleatorios",
-                                        subtitle="Ignora el color elegido")
+        self.random_row = Adw.SwitchRow(title="Random colors",
+                                        subtitle="Ignores the chosen color")
         self.random_row.connect("notify::active", self.on_changed)
         self.color_group.add(self.random_row)
         page.add(self.color_group)
 
-        # Animación
-        group = Adw.PreferencesGroup(title="Ajustes")
-        self.brightness_row, self.brightness = self.make_scale_row(group, "Brillo")
-        self.speed_row, self.speed = self.make_scale_row(group, "Velocidad")
+        # Animation
+        group = Adw.PreferencesGroup(title="Settings")
+        self.brightness_row, self.brightness = self.make_scale_row(group, "Brightness")
+        self.speed_row, self.speed = self.make_scale_row(group, "Speed")
         self.dir_model = Gtk.StringList()
-        self.dir_row = Adw.ComboRow(title="Dirección", model=self.dir_model)
+        self.dir_row = Adw.ComboRow(title="Direction", model=self.dir_model)
         self.dir_row.connect("notify::selected", self.on_changed)
         group.add(self.dir_row)
         page.add(group)
@@ -161,7 +161,7 @@ class Window(Adw.ApplicationWindow):
         return row, scale
 
     def make_swatch(self, i):
-        """Círculo del historial; dibuja self.recent[i], que cambia al aplicar colores."""
+        """History circle; draws self.recent[i], which changes when colors are applied."""
         def draw(_area, cr, w, h):
             r = min(w, h) / 2
             cr.arc(w / 2, h / 2, r - 1, 0, 2 * math.pi)
@@ -190,7 +190,7 @@ class Window(Adw.ApplicationWindow):
         for i in range(len(self.swatches)):
             self.refresh_swatch(i)
 
-    # --- estado ---
+    # --- state ---
 
     def current_mode(self):
         return gmk67.MODES[self.mode_row.get_selected()]
@@ -242,7 +242,7 @@ class Window(Adw.ApplicationWindow):
             try:
                 with gmk67.Keyboard() as kb:
                     kb.set_effect(self.profile.effects[self.profile.active])
-                msg = "Aplicado"
+                msg = "Applied"
             except gmk67.DeviceNotFound as e:
                 msg = str(e)
             except gmk67.ProtocolError as e:
@@ -251,7 +251,7 @@ class Window(Adw.ApplicationWindow):
                 msg = None
                 GLib.idle_add(self.show_udev_help)
             except OSError as e:
-                msg = f"Error al hablar con el teclado: {e.strerror or e}"
+                msg = f"Error talking to the keyboard: {e.strerror or e}"
             GLib.idle_add(self.done, msg)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -262,18 +262,18 @@ class Window(Adw.ApplicationWindow):
             self.toasts.add_toast(Adw.Toast(title=msg, timeout=3))
 
     def show_udev_help(self):
-        """Sin la regla udev el usuario no puede abrir el hidraw (siempre pasa en Flatpak)."""
+        """Without the udev rule the user cannot open the hidraw (always the case on Flatpak)."""
         view = Gtk.TextView(editable=False, monospace=True, wrap_mode=Gtk.WrapMode.CHAR,
                             top_margin=8, bottom_margin=8, left_margin=8, right_margin=8,
                             css_classes=["card"])
         view.get_buffer().set_text(UDEV_COMMAND)
         dialog = Adw.AlertDialog(
-            heading="Falta permiso para usar el teclado",
-            body="Ejecuta estos comandos en una terminal una sola vez. "
-                 "Dan acceso al teclado al usuario con sesión iniciada.",
+            heading="Missing permission to use the keyboard",
+            body="Run these commands in a terminal once. "
+                 "They give the logged-in user access to the keyboard.",
             extra_child=view)
-        dialog.add_response("copy", "Copiar comandos")
-        dialog.add_response("close", "Cerrar")
+        dialog.add_response("copy", "Copy commands")
+        dialog.add_response("close", "Close")
         dialog.set_default_response("copy")
         dialog.connect("response", lambda _d, r: r == "copy" and
                        self.get_clipboard().set(UDEV_COMMAND))
@@ -291,7 +291,7 @@ class App(Adw.Application):
         Adw.AboutDialog(
             application_name="GMK67", application_icon=APP_ID, version=VERSION,
             developer_name="Daniel Alvarez", license_type=Gtk.License.GPL_3_0,
-            comments="Control de las luces RGB del teclado Zuoya GMK67 (v1)",
+            comments="RGB lighting control for the Zuoya GMK67 (v1) keyboard",
             website="https://github.com/aloran-dev/gmk67-rgb",
             issue_url="https://github.com/aloran-dev/gmk67-rgb/issues",
         ).present(self.get_active_window())

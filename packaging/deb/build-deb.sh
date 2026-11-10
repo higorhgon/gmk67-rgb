@@ -1,8 +1,8 @@
 #!/bin/sh
-# Construye dist/gmk67-rgb_<versión>_all.deb con dpkg-deb (sin debhelper).
+# Build dist/gmk67-rgb_<version>_all.deb with dpkg-deb (no debhelper).
 set -e
 cd "$(dirname "$0")/../.."
-VERSION=${1:?uso: build-deb.sh <versión>}
+VERSION=${1:?usage: build-deb.sh <version>}
 ROOT=$(mktemp -d)
 trap 'rm -rf "$ROOT"' EXIT
 chmod 755 "$ROOT"

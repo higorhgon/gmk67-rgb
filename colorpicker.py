@@ -1,4 +1,4 @@
-"""Selector de color compacto en un popover (sustituye a Gtk.ColorDialog)."""
+"""Compact color picker in a popover (replaces Gtk.ColorDialog)."""
 
 import colorsys
 import math
@@ -8,7 +8,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import GObject, Gdk, Gtk
 
 SV_WIDTH, SV_HEIGHT = 240, 150
-PAD = 8  # margen para que el indicador no se corte en los bordes
+PAD = 8  # margin so the indicator is not clipped at the edges
 
 _CSS = """
 .cp-swatch { border-radius: 6px; box-shadow: inset 0 0 0 1px alpha(black, 0.3); }
@@ -77,12 +77,12 @@ class ColorPickerButton(Gtk.MenuButton):
 
     def set_color(self, rgb):
         h, s, v = colorsys.rgb_to_hsv(*(c / 255 for c in rgb))
-        if s > 0:  # en grises el tono no importa: conserva el anterior
+        if s > 0:  # for grays the hue does not matter: keep the previous one
             self.h = h
         self.s, self.v = s, v
         self._sync(emit=False)
 
-    # --- interno ---
+    # --- internal ---
 
     def _sync(self, emit=True):
         self._updating = True

@@ -1,79 +1,81 @@
 # gmk67-rgb
 
-El programa para cambiar el backlight del Zuoya GMK67 solo existe para Windows y OpenRGB no reconoce esta versión del teclado, así que por eso decidi vibecodear esta pequeña app.
+> English fork of [aloran-dev/gmk67-rgb](https://github.com/aloran-dev/gmk67-rgb).
 
-La app busca ser sencilla, simplemente eliges un efecto y un color, ajustas el brillo y la velocidad, y listo. Solo la he probado con mi teclado, así que no esperes gran copatibilidad.
+The program to change the backlight of the Zuoya GMK67 only exists for Windows, and OpenRGB does not recognize this version of the keyboard, so I decided to vibecode this small app.
 
-## Qué hace
+The app aims to be simple: you pick an effect and a color, adjust brightness and speed, and that's it. I have only tested it with my own keyboard, so don't expect broad compatibility.
 
-- 19 efectos más "Apagado": estático, respiración, ola, flujo, ondas, etc.
-- Color, colores aleatorios, brillo, velocidad y dirección.
-- Historial con los últimos 8 colores aplicados.
-- Corrección de color para los LEDs del teclado: sin ella, el naranja se ve amarillo y los verdes azulados se ven azules.
-- Al abrirse, lee el efecto que tiene puesto el teclado.
+## What it does
 
-## Compatibilidad
+- 19 effects plus "Off": static, breathing, wave, flowing, ripples, etc.
+- Color, random colors, brightness, speed and direction.
+- History of the last 8 applied colors.
+- Color correction for the keyboard LEDs: without it, orange looks yellow and bluish greens look blue.
+- On startup, it reads the effect currently set on the keyboard.
 
-Solo el **GMK67 v1** conectado **por cable USB**. Se identifica así:
+## Compatibility
+
+Only the **GMK67 v1** connected **by USB cable**. It identifies like this:
 
 ```
 $ lsusb
-... ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)   ← ID prestado por el firmware
+... ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)   ← ID borrowed by the firmware
 $ cat /sys/class/hidraw/hidraw*/device/uevent | grep hfd
 HID_NAME=hfd.cn USB DEVICE
 ```
 
-El GMK67 **v2** (`36b0:3068`) usa QMK/VIA y no necesita esto: funciona con [VIA](https://usevia.app).
+The GMK67 **v2** (`36b0:3068`) uses QMK/VIA and does not need this: it works with [VIA](https://usevia.app).
 
-## Instalación
+## Installation
 
-Descarga el paquete de tu distribución desde [Releases](https://github.com/aloran-dev/gmk67-rgb/releases):
+Download the package for your distribution from the upstream [Releases](https://github.com/aloran-dev/gmk67-rgb/releases) (Spanish UI):
 
-| Distribución | Instalar |
+| Distribution | Install |
 |---|---|
 | Ubuntu 24.04+, Debian 13+, Mint, Pop!_OS | `sudo apt install ./gmk67-rgb_*_all.deb` |
 | Fedora 39+ | `sudo dnf install ./gmk67-rgb-*.noarch.rpm` |
-| Cualquiera con Flatpak | `flatpak install --user gmk67-rgb-*.flatpak` |
+| Any with Flatpak | `flatpak install --user gmk67-rgb-*.flatpak` |
 
-El `.deb` y el `.rpm` instalan una regla udev que da acceso al teclado al usuario de la sesión. Un Flatpak no puede instalar reglas en el sistema, así que con Flatpak hay que añadirla una vez a mano. La app muestra los comandos la primera vez que no puede acceder al teclado.
+The `.deb` and `.rpm` install a udev rule that gives the logged-in user access to the keyboard. A Flatpak cannot install rules on the system, so with Flatpak you have to add it once by hand. The app shows the commands the first time it cannot access the keyboard.
 
-### Desde el código fuente
+### From source
 
-Necesitas Python 3, PyGObject, GTK 4.12+ y libadwaita 1.4+ (en Ubuntu/Debian: `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1`).
+You need Python 3, PyGObject, GTK 4.12+ and libadwaita 1.4+ (on Ubuntu/Debian: `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1`; on Arch: `python-gobject gtk4 libadwaita`).
 
 ```sh
-git clone https://github.com/aloran-dev/gmk67-rgb.git
+git clone https://github.com/higorhgon/gmk67-rgb.git
 cd gmk67-rgb
-./install.sh            # app en ~/.local + regla udev (pide sudo)
+./install.sh            # app in ~/.local + udev rule (asks for sudo)
 ./install.sh --uninstall
 ```
 
-## Protocolo
+## Protocol
 
-Se obtuvo analizando el driver oficial de Windows. Son *feature reports* HID de 64 bytes, sin report ID, en la interfaz 0 del teclado. Para poner un efecto se envía:
+It was obtained by analyzing the official Windows driver. They are 64-byte HID *feature reports*, with no report ID, on interface 0 of the keyboard. To set an effect, send:
 
-| Paquete | Significado |
+| Packet | Meaning |
 |---|---|
-| `04 18` | activar el efecto por software |
-| `04 13 00 00 00 00 00 00 01` | se va a escribir 1 página |
-| `[modo, R, G, B, 0, 0, 0, 0, aleatorio, brillo+1, velocidad+1, dirección, 0, 0, AA, 55]` | la página del efecto |
-| `04 02` | fin de la escritura |
-| `04 F0` | aplicar |
+| `04 18` | enable the software effect |
+| `04 13 00 00 00 00 00 00 01` | 1 page is about to be written |
+| `[mode, R, G, B, 0, 0, 0, 0, random, brightness+1, speed+1, direction, 0, 0, AA, 55]` | the effect page |
+| `04 02` | end of write |
+| `04 F0` | apply |
 
-Cada comando se confirma con un GET_FEATURE que devuelve `04 <cmd> 00 01`. Los modos van de `0x01` a `0x13` y `0x00` apaga las luces. El brillo y la velocidad van de 0 a 15. Los detalles están en [`gmk67.py`](gmk67.py).
+Each command is acknowledged by a GET_FEATURE that returns `04 <cmd> 00 01`. Modes go from `0x01` to `0x13` and `0x00` turns the lights off. Brightness and speed go from 0 to 15. Details are in [`gmk67.py`](gmk67.py).
 
-Se parece al protocolo del Keychron K3 V2 que soporta OpenRGB, pero la secuencia de OpenRGB (`04 19` + 18 páginas) este teclado la acepta y la ignora.
+It looks like the Keychron K3 V2 protocol supported by OpenRGB, but this keyboard accepts and ignores the OpenRGB sequence (`04 19` + 18 pages).
 
-Los cambios hechos con las teclas Fn no se reflejan en el efecto guardado por software.
+Changes made with the Fn keys are not reflected in the effect saved by software.
 
-También se puede usar sin la interfaz:
+It can also be used without the UI:
 
 ```python
 import gmk67
 with gmk67.Keyboard() as kb:
-    kb.set_effect(gmk67.Effect(0x07, color=(255, 128, 0), speed=12))  # respiración naranja
+    kb.set_effect(gmk67.Effect(0x07, color=(255, 128, 0), speed=12))  # orange breathing
 ```
 
-## Licencia
+## License
 
 [GPL-3.0](LICENSE)
